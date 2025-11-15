@@ -1,0 +1,13 @@
+# Wymagania dla Systemu Generującego Scenariusze Testowe
+# 
+# To jest plik placeholder. Zależności będą dodawane w miarę implementacji.
+#
+# Przykładowe zależności, które mogą być potrzebne (na podstawie dokumentacji):
+# - flask (dla backendu)
+# - openpyxl (dla eksportu do Excel)
+# - python-docx lub docx2txt (dla ekstrakcji z plików .docx)
+# - chromadb (dla bazy danych wektorowej)
+# - sentence-transformers (dla generowania wektorów)
+# - transformers (dla modeli AI)
+# - ollama (dla integracji z lokalnym modelem)
+
