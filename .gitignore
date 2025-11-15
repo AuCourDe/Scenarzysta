@@ -37,6 +37,7 @@ wheels/
 .DS_Store
 Thumbs.db
 *.Zone.Identifier
+*:Zone.Identifier
 
 # Logi i pliki tymczasowe
 *.log
