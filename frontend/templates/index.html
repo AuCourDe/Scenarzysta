@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Generujący Scenariusze Testowe</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 System Generujący Scenariusze Testowe</h1>
+            <p class="subtitle">Automatyczne generowanie scenariuszy testowych na podstawie multimodalnej dokumentacji</p>
+        </header>
+
+        <main>
+            <!-- Sekcja statusu Ollama -->
+            <section class="status-section">
+                <h2>Status Systemu</h2>
+                <div id="ollama-status" class="status-card">
+                    <div class="status-indicator" id="status-indicator"></div>
+                    <span id="status-text">Sprawdzanie połączenia z Ollama...</span>
+                </div>
+            </section>
+
+            <!-- Sekcja przesyłania pliku -->
+            <section class="upload-section">
+                <h2>Prześlij Dokumentację</h2>
+                <form id="upload-form" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="project-name">Nazwa Projektu:</label>
+                        <input type="text" id="project-name" name="project_name" value="Projekt" placeholder="Wprowadź nazwę projektu">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="file-input" class="file-label">
+                            <span class="file-button">Wybierz plik .docx</span>
+                            <input type="file" id="file-input" name="file" accept=".docx" required>
+                            <span id="file-name" class="file-name">Nie wybrano pliku</span>
+                        </label>
+                    </div>
+                    
+                    <button type="submit" id="submit-btn" class="btn btn-primary" disabled>
+                        <span class="btn-text">Rozpocznij Przetwarzanie</span>
+                        <span class="btn-loader" style="display: none;">⏳</span>
+                    </button>
+                </form>
+            </section>
+
+            <!-- Sekcja postępu -->
+            <section class="progress-section" id="progress-section" style="display: none;">
+                <h2>Postęp Przetwarzania</h2>
+                <div class="progress-card">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                    <p class="progress-text" id="progress-text">0%</p>
+                    <p class="progress-message" id="progress-message"></p>
+                </div>
+            </section>
+
+            <!-- Sekcja wyników -->
+            <section class="results-section" id="results-section" style="display: none;">
+                <h2>Wyniki</h2>
+                <div class="results-card">
+                    <div class="results-stats" id="results-stats"></div>
+                    <div class="results-actions">
+                        <button id="download-btn" class="btn btn-success">📥 Pobierz Plik Excel</button>
+                        <button id="view-results-btn" class="btn btn-secondary">👁️ Podgląd Scenariuszy</button>
+                    </div>
+                    <div id="test-cases-preview" class="test-cases-preview" style="display: none;"></div>
+                </div>
+            </section>
+
+            <!-- Sekcja błędów -->
+            <section class="error-section" id="error-section" style="display: none;">
+                <h2>Błąd</h2>
+                <div class="error-card" id="error-card"></div>
+            </section>
+        </main>
+
+        <footer>
+            <p>System działa lokalnie. Wszystkie dane pozostają na Twoim komputerze.</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
