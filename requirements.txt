@@ -1,13 +1,24 @@
 # Wymagania dla Systemu Generującego Scenariusze Testowe
 # 
-# To jest plik placeholder. Zależności będą dodawane w miarę implementacji.
-#
-# Przykładowe zależności, które mogą być potrzebne (na podstawie dokumentacji):
-# - flask (dla backendu)
-# - openpyxl (dla eksportu do Excel)
-# - python-docx lub docx2txt (dla ekstrakcji z plików .docx)
-# - chromadb (dla bazy danych wektorowej)
-# - sentence-transformers (dla generowania wektorów)
-# - transformers (dla modeli AI)
-# - ollama (dla integracji z lokalnym modelem)
+# Zależności dla aplikacji Flask z wieloużytkownikowością i kolejką zadań
 
+# Framework webowy
+Flask==3.0.0
+flask-cors==4.0.0
+
+# Przetwarzanie dokumentów
+python-docx==1.1.0
+openpyxl==3.1.2
+
+# Przetwarzanie obrazów (opcjonalne, dla przyszłej integracji z modelami wizyjnymi)
+Pillow==10.1.0
+
+# Baza danych wektorowa (opcjonalne, jeśli będzie potrzebne)
+# chromadb==0.4.18
+
+# Modele AI (opcjonalne, dla przyszłej integracji)
+# sentence-transformers==2.2.2
+# transformers==4.35.2
+
+# Narzędzia pomocnicze
+python-dateutil==2.8.2
