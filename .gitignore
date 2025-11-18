@@ -55,3 +55,6 @@ test_data/
 *.test
 *.bak
 
+# Osobne repozytorium (fork) - nie śledzić w głównym repo
+ScenarzystaQwen/
+

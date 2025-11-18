@@ -93,3 +93,50 @@ System rozwiązuje problem przetwarzania dużych dokumentów na średniej klasy 
 
 **Status:** Zakończone pomyślnie - aplikacja gotowa do użycia
 
+## 2024-12-XX (Data implementacji Qwen)
+
+### Implementacja wersji Qwen - osobne repozytorium (fork) ScenarzystaQwen
+
+**Akcja:** Stworzenie osobnego repozytorium (fork) z wersją aplikacji używającą modelu Qwen zamiast Ollama/Llama.
+
+**Wykonane kroki:**
+1. Utworzono osobne repozytorium (fork) ScenarzystaQwen w katalogu `/workspace/ScenarzystaQwen/`
+2. Zaimplementowano QwenClient (utils/qwen_client.py) z obsługą:
+   - Qwen przez Ollama (lokalnie)
+   - Qwen przez API Alibaba Cloud (chmurowo)
+   - Analiza wizyjna obrazów
+   - Generowanie tekstu
+3. Zmodyfikowano DocumentProcessor do użycia QwenClient zamiast OllamaClient
+4. Zaktualizowano backend (app.py) z konfiguracją Qwen przez zmienne środowiskowe
+5. Zaktualizowano frontend do wyświetlania statusu Qwen
+6. Zaktualizowano TestGenerator dla kompatybilności z QwenClient
+7. Utworzono dokumentację README.md dla wersji Qwen
+8. Utworzono README_FORK.md wyjaśniający dlaczego to osobne repozytorium
+9. Zainicjalizowano osobne repozytorium Git w ScenarzystaQwen/
+
+**Efekt:**
+- ✅ Aplikacja działa z modelem Qwen zamiast Ollama/Llama
+- ✅ Obsługa Qwen lokalnie przez Ollama
+- ✅ Obsługa Qwen przez API Alibaba Cloud
+- ✅ Konfiguracja przez zmienne środowiskowe
+- ✅ Dokumentacja dla wersji Qwen
+- ✅ Wszystkie funkcjonalności działają z Qwen
+- ✅ Osobne repozytorium Git (fork)
+
+**Różnice w stosunku do wersji Ollama:**
+- Używa modelu Qwen 2.5 VL do analizy wizyjnej
+- Używa modelu Qwen 2.5 do generowania tekstu
+- Możliwość użycia lokalnie (Ollama) lub chmurowo (API)
+- Lepsza obsługa języka chińskiego (Qwen jest zoptymalizowany dla wielu języków)
+
+**Dlaczego osobne repozytorium (fork) a nie branch:**
+- Obie wersje aplikacji są zupełnie inne i nie można ich łączyć
+- Różne modele AI (Llama vs Qwen)
+- Różne API i integracje
+- Różne wymagania i konfiguracje
+- Różne ścieżki rozwoju
+
+**Lokalizacja:** Osobne repozytorium w `/workspace/ScenarzystaQwen/`
+
+**Status:** Zakończone pomyślnie - wersja Qwen gotowa do użycia jako osobne repozytorium
+
