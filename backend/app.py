@@ -36,8 +36,21 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(EXTRACTED_FOLDER, exist_ok=True)
 os.makedirs(EXPORTS_FOLDER, exist_ok=True)
 
-# Inicjalizacja procesora dokumentów
-processor = DocumentProcessor()
+# Konfiguracja Qwen (można ustawić przez zmienne środowiskowe)
+QWEN_URL = os.getenv('QWEN_URL', 'http://localhost:11434')
+QWEN_MODEL = os.getenv('QWEN_MODEL', 'qwen2.5-vl')
+USE_OLLAMA = os.getenv('USE_OLLAMA', 'true').lower() == 'true'
+QWEN_API_KEY = os.getenv('QWEN_API_KEY', None)
+QWEN_API_BASE = os.getenv('QWEN_API_BASE', None)
+
+# Inicjalizacja procesora dokumentów z Qwen
+processor = DocumentProcessor(
+    qwen_url=QWEN_URL,
+    qwen_model=QWEN_MODEL,
+    use_ollama=USE_OLLAMA,
+    qwen_api_key=QWEN_API_KEY,
+    qwen_api_base=QWEN_API_BASE
+)
 
 @app.route('/')
 def index():
@@ -52,17 +65,22 @@ def health():
         'timestamp': datetime.now().isoformat()
     })
 
-@app.route('/api/check-ollama', methods=['GET'])
-def check_ollama():
-    """Sprawdza połączenie z Ollama."""
+@app.route('/api/check-qwen', methods=['GET'])
+def check_qwen():
+    """Sprawdza połączenie z Qwen."""
     try:
-        status = processor.check_ollama_connection()
+        status = processor.check_qwen_connection()
         return jsonify(status)
     except Exception as e:
         return jsonify({
             'connected': False,
             'error': str(e)
         }), 500
+
+@app.route('/api/check-ollama', methods=['GET'])
+def check_ollama():
+    """Kompatybilność wsteczna - przekierowanie do check-qwen."""
+    return check_qwen()
 
 @app.route('/api/process-document', methods=['POST'])
 def process_document():

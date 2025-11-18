@@ -13,7 +13,7 @@ try:
     from .docx_extractor import DocxExtractor
     from .batch_processor import BatchProcessor
     from .rag_pipeline import RAGPipeline
-    from .ollama_client import OllamaClient
+    from .qwen_client import QwenClient
     from .test_generator import TestGenerator
     from .excel_exporter import ExcelExporter
 except ImportError:
@@ -24,7 +24,7 @@ except ImportError:
     from utils.docx_extractor import DocxExtractor
     from utils.batch_processor import BatchProcessor
     from utils.rag_pipeline import RAGPipeline
-    from utils.ollama_client import OllamaClient
+    from utils.qwen_client import QwenClient
     from utils.test_generator import TestGenerator
     from utils.excel_exporter import ExcelExporter
 
@@ -34,43 +34,56 @@ class DocumentProcessor:
     """
     
     def __init__(self, 
-                 ollama_url: str = "http://localhost:11434",
-                 ollama_model: str = "llama3.2-vision",
+                 qwen_url: str = "http://localhost:11434",
+                 qwen_model: str = "qwen2.5-vl",
+                 use_ollama: bool = True,
+                 qwen_api_key: str = None,
+                 qwen_api_base: str = None,
                  batch_size: int = 5,
                  chromadb_path: str = "data/chromadb"):
         """
         Inicjalizacja procesora dokumentów.
         
         Args:
-            ollama_url: URL serwera Ollama
-            ollama_model: Nazwa modelu Ollama
+            qwen_url: URL serwera Ollama (jeśli use_ollama=True)
+            qwen_model: Nazwa modelu Qwen (np. "qwen2.5-vl", "qwen2.5")
+            use_ollama: Czy używać Ollama (True) czy Qwen API (False)
+            qwen_api_key: Klucz API Qwen (jeśli use_ollama=False)
+            qwen_api_base: URL API Qwen (jeśli use_ollama=False)
             batch_size: Rozmiar partii do przetwarzania
             chromadb_path: Ścieżka do bazy ChromaDB
         """
         self.extractor = DocxExtractor()
         self.batch_processor = BatchProcessor(batch_size=batch_size)
         self.rag = RAGPipeline(persist_directory=chromadb_path)
-        self.ollama = OllamaClient(base_url=ollama_url, model=ollama_model)
-        self.test_generator = TestGenerator(self.ollama, self.rag)
+        self.qwen = QwenClient(
+            base_url=qwen_url,
+            model=qwen_model,
+            use_ollama=use_ollama,
+            api_key=qwen_api_key,
+            api_base=qwen_api_base
+        )
+        self.test_generator = TestGenerator(self.qwen, self.rag)
         self.excel_exporter = ExcelExporter()
         
         self.current_task_id = None
         self.task_status = {}
     
-    def check_ollama_connection(self) -> Dict:
+    def check_qwen_connection(self) -> Dict:
         """
-        Sprawdza połączenie z Ollama.
+        Sprawdza połączenie z Qwen.
         
         Returns:
             Słownik ze statusem połączenia
         """
-        is_connected = self.ollama.check_connection()
-        available_models = self.ollama.list_models() if is_connected else []
+        is_connected = self.qwen.check_connection()
+        available_models = self.qwen.list_models() if is_connected else []
         
         return {
             'connected': is_connected,
             'models': available_models,
-            'configured_model': self.ollama.model
+            'configured_model': self.qwen.model,
+            'use_ollama': self.qwen.use_ollama
         }
     
     def process_document(self, docx_path: str, project_name: str = "Projekt") -> Dict:
@@ -138,7 +151,7 @@ class DocumentProcessor:
                     )
                     
                     # Analizuj obraz
-                    analysis_result = self.ollama.analyze_image(image_path)
+                    analysis_result = self.qwen.analyze_image(image_path)
                     
                     if analysis_result['success']:
                         image_descriptions.append({

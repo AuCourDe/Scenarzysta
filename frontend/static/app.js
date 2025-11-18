@@ -2,9 +2,9 @@
 
 const API_BASE = '';
 
-// Sprawdź status Ollama przy starcie
+// Sprawdź status Qwen przy starcie
 document.addEventListener('DOMContentLoaded', () => {
-    checkOllamaStatus();
+    checkQwenStatus();
     
     // Obsługa wyboru pliku
     const fileInput = document.getElementById('file-input');
@@ -26,27 +26,34 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadForm.addEventListener('submit', handleFormSubmit);
 });
 
-// Sprawdź status Ollama
-async function checkOllamaStatus() {
+// Sprawdź status Qwen
+async function checkQwenStatus() {
     const statusCard = document.getElementById('ollama-status');
     const statusIndicator = document.getElementById('status-indicator');
     const statusText = document.getElementById('status-text');
     
     try {
-        const response = await fetch(`${API_BASE}/api/check-ollama`);
+        const response = await fetch(`${API_BASE}/api/check-qwen`);
         const data = await response.json();
         
         if (data.connected) {
             statusIndicator.className = 'status-indicator connected';
-            statusText.textContent = `Połączono z Ollama (Model: ${data.configured_model || 'N/A'})`;
+            const mode = data.use_ollama ? 'Ollama' : 'API';
+            statusText.textContent = `Połączono z Qwen przez ${mode} (Model: ${data.configured_model || 'N/A'})`;
         } else {
             statusIndicator.className = 'status-indicator disconnected';
-            statusText.textContent = `Brak połączenia z Ollama. Upewnij się, że Ollama jest uruchomione.`;
+            const mode = data.use_ollama ? 'Ollama' : 'API';
+            statusText.textContent = `Brak połączenia z Qwen przez ${mode}. Sprawdź konfigurację.`;
         }
     } catch (error) {
         statusIndicator.className = 'status-indicator disconnected';
         statusText.textContent = `Błąd połączenia: ${error.message}`;
     }
+}
+
+// Kompatybilność wsteczna
+async function checkOllamaStatus() {
+    return checkQwenStatus();
 }
 
 // Obsługa przesyłania formularza

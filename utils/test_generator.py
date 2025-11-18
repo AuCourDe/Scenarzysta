@@ -12,15 +12,16 @@ class TestGenerator:
     Klasa do generowania scenariuszy testowych.
     """
     
-    def __init__(self, ollama_client, rag_pipeline):
+    def __init__(self, qwen_client, rag_pipeline):
         """
         Inicjalizacja generatora testów.
         
         Args:
-            ollama_client: Instancja OllamaClient
+            qwen_client: Instancja QwenClient (lub OllamaClient dla kompatybilności)
             rag_pipeline: Instancja RAGPipeline
         """
-        self.ollama = ollama_client
+        self.qwen = qwen_client
+        self.ollama = qwen_client  # Kompatybilność wsteczna
         self.rag = rag_pipeline
     
     def generate_test_cases(self, requirement_query: str, max_cases: int = 10) -> List[Dict]:
@@ -74,7 +75,7 @@ FORMAT WYJŚCIOWY (JSON):
 Zwróć TYLKO poprawny JSON, bez dodatkowych komentarzy."""
         
         # Wygeneruj odpowiedź
-        result = self.ollama.generate_text(
+        result = self.qwen.generate_text(
             prompt=generation_prompt,
             system_prompt=system_prompt
         )

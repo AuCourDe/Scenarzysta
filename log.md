@@ -93,3 +93,40 @@ System rozwiązuje problem przetwarzania dużych dokumentów na średniej klasy 
 
 **Status:** Zakończone pomyślnie - aplikacja gotowa do użycia
 
+## 2024-12-XX (Data implementacji Qwen)
+
+### Implementacja wersji Qwen - alternatywny branch ScenarzystaQwen
+
+**Akcja:** Stworzenie alternatywnej wersji aplikacji używającej modelu Qwen zamiast Ollama/Llama.
+
+**Wykonane kroki:**
+1. Utworzono branch ScenarzystaQwen
+2. Zaimplementowano QwenClient (utils/qwen_client.py) z obsługą:
+   - Qwen przez Ollama (lokalnie)
+   - Qwen przez API Alibaba Cloud (chmurowo)
+   - Analiza wizyjna obrazów
+   - Generowanie tekstu
+3. Zmodyfikowano DocumentProcessor do użycia QwenClient zamiast OllamaClient
+4. Zaktualizowano backend (app.py) z konfiguracją Qwen przez zmienne środowiskowe
+5. Zaktualizowano frontend do wyświetlania statusu Qwen
+6. Zaktualizowano TestGenerator dla kompatybilności z QwenClient
+7. Utworzono dokumentację README_QWEN.md
+8. Utworzono instrukcje instalacji INSTALLATION_QWEN.md
+
+**Efekt:**
+- ✅ Aplikacja działa z modelem Qwen zamiast Ollama/Llama
+- ✅ Obsługa Qwen lokalnie przez Ollama
+- ✅ Obsługa Qwen przez API Alibaba Cloud
+- ✅ Kompatybilność wsteczna z endpointami Ollama
+- ✅ Konfiguracja przez zmienne środowiskowe
+- ✅ Dokumentacja dla wersji Qwen
+- ✅ Wszystkie funkcjonalności działają z Qwen
+
+**Różnice w stosunku do wersji Ollama:**
+- Używa modelu Qwen 2.5 VL do analizy wizyjnej
+- Używa modelu Qwen 2.5 do generowania tekstu
+- Możliwość użycia lokalnie (Ollama) lub chmurowo (API)
+- Lepsza obsługa języka chińskiego (Qwen jest zoptymalizowany dla wielu języków)
+
+**Status:** Zakończone pomyślnie - wersja Qwen gotowa do użycia
+
