@@ -26,7 +26,7 @@ UPLOAD_FOLDER = 'data/uploads'
 EXTRACTED_FOLDER = 'data/extracted'
 EXPORTS_FOLDER = 'data/exports'
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB (zwiększone dla większych dokumentów)
-ALLOWED_EXTENSIONS = {'docx'}
+ALLOWED_EXTENSIONS = {'docx', 'pdf', 'txt'}
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
@@ -76,7 +76,7 @@ def process_document():
             return jsonify({'error': 'Nie wybrano pliku'}), 400
         
         if not allowed_file(file.filename):
-            return jsonify({'error': 'Nieprawidłowy format pliku. Dozwolone: .docx'}), 400
+            return jsonify({'error': 'Nieprawidłowy format pliku. Dozwolone: .docx, .pdf, .txt'}), 400
         
         # Zapisz plik
         filename = secure_filename(file.filename)
@@ -86,7 +86,7 @@ def process_document():
         # Pobierz nazwę projektu (opcjonalna)
         project_name = request.form.get('project_name', 'Projekt')
         
-        # Przetwórz dokument
+        # Przetwórz dokument (obsługuje .docx, .pdf, .txt)
         result = processor.process_document(filepath, project_name=project_name)
         
         return jsonify(result)

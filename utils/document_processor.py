@@ -10,23 +10,27 @@ import uuid
 from datetime import datetime
 
 try:
-    from .docx_extractor import DocxExtractor
+    from .document_extractor import DocumentExtractor
     from .batch_processor import BatchProcessor
     from .rag_pipeline import RAGPipeline
     from .ollama_client import OllamaClient
     from .test_generator import TestGenerator
     from .excel_exporter import ExcelExporter
+    from .documentation_validator import DocumentationValidator
+    from .coverage_checker import CoverageChecker
 except ImportError:
     # Fallback dla importów bezwzględnych
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from utils.docx_extractor import DocxExtractor
+    from utils.document_extractor import DocumentExtractor
     from utils.batch_processor import BatchProcessor
     from utils.rag_pipeline import RAGPipeline
     from utils.ollama_client import OllamaClient
     from utils.test_generator import TestGenerator
     from utils.excel_exporter import ExcelExporter
+    from utils.documentation_validator import DocumentationValidator
+    from utils.coverage_checker import CoverageChecker
 
 class DocumentProcessor:
     """
@@ -47,7 +51,9 @@ class DocumentProcessor:
             batch_size: Rozmiar partii do przetwarzania
             chromadb_path: Ścieżka do bazy ChromaDB
         """
-        self.extractor = DocxExtractor()
+        self.extractor = DocumentExtractor()
+        self.validator = DocumentationValidator()
+        self.coverage_checker = CoverageChecker()
         self.batch_processor = BatchProcessor(batch_size=batch_size)
         self.rag = RAGPipeline(persist_directory=chromadb_path)
         self.ollama = OllamaClient(base_url=ollama_url, model=ollama_model)
@@ -73,12 +79,12 @@ class DocumentProcessor:
             'configured_model': self.ollama.model
         }
     
-    def process_document(self, docx_path: str, project_name: str = "Projekt") -> Dict:
+    def process_document(self, doc_path: str, project_name: str = "Projekt") -> Dict:
         """
         Przetwarza dokument i generuje scenariusze testowe.
         
         Args:
-            docx_path: Ścieżka do pliku .docx
+            doc_path: Ścieżka do pliku (.docx, .pdf, .txt)
             project_name: Nazwa projektu
             
         Returns:
@@ -96,13 +102,32 @@ class DocumentProcessor:
         try:
             # Krok 1: Ekstrakcja
             self._update_status(task_id, 10, 'Ekstrakcja tekstu i obrazów z dokumentu...')
-            extraction_result = self.extractor.extract(docx_path)
+            extraction_result = self.extractor.extract(doc_path)
             
             text_chunks = extraction_result.get('text', [])
             images = extraction_result.get('images', [])
+            total_pages = extraction_result.get('total_pages', 0)
             
             if not text_chunks and not images:
                 raise ValueError("Nie znaleziono tekstu ani obrazów w dokumencie")
+            
+            # Krok 1.5: Weryfikacja dokumentacji PRZED generowaniem scenariuszy
+            self._update_status(task_id, 15, 'Weryfikacja dokumentacji pod kątem błędów...')
+            validation_result = self.validator.validate(text_chunks, images)
+            
+            if validation_result['should_stop']:
+                # Zatrzymaj generowanie i zwróć błędy
+                self._update_status(task_id, 0, 'Weryfikacja dokumentacji wykryła błędy krytyczne!')
+                self.task_status[task_id]['status'] = 'validation_failed'
+                self.task_status[task_id]['validation_result'] = validation_result
+                raise ValueError(
+                    f"Weryfikacja dokumentacji wykryła {len(validation_result['errors'])} błędów krytycznych. "
+                    f"Proszę poprawić dokumentację przed generowaniem scenariuszy testowych."
+                )
+            
+            if validation_result['warnings']:
+                # Ostrzeżenia nie zatrzymują procesu, ale są zapisywane
+                self.task_status[task_id]['validation_warnings'] = validation_result['warnings']
             
             # Krok 2: Tworzenie partii
             self._update_status(task_id, 20, 'Tworzenie partii do przetwarzania...')
@@ -183,7 +208,13 @@ class DocumentProcessor:
                 
                 all_test_cases.extend(test_cases)
             
-            # Krok 6: Eksport do Excel
+            # Krok 6: Sprawdzenie pokrycia dokumentacji
+            self._update_status(task_id, 90, 'Sprawdzanie pokrycia dokumentacji testami...')
+            coverage_result = self.coverage_checker.check_coverage(
+                text_chunks, all_test_cases, images
+            )
+            
+            # Krok 7: Eksport do Excel
             self._update_status(task_id, 95, 'Eksport do pliku Excel...')
             output_dir = Path("data/exports")
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -198,17 +229,26 @@ class DocumentProcessor:
             self.task_status[task_id]['status'] = 'completed'
             self.task_status[task_id]['excel_path'] = str(excel_path)
             self.task_status[task_id]['test_cases_count'] = len(all_test_cases)
+            self.task_status[task_id]['coverage'] = coverage_result
+            self.task_status[task_id]['total_pages'] = total_pages
             
             return {
                 'task_id': task_id,
                 'status': 'completed',
                 'test_cases': all_test_cases,
                 'excel_path': str(excel_path),
+                'coverage': coverage_result,
+                'validation': {
+                    'warnings': validation_result.get('warnings', []),
+                    'inconsistencies': validation_result.get('inconsistencies', [])
+                },
                 'statistics': {
                     'text_chunks': len(text_chunks),
                     'images': len(images),
                     'batches': total_batches,
-                    'test_cases': len(all_test_cases)
+                    'test_cases': len(all_test_cases),
+                    'total_pages': total_pages,
+                    'coverage_percentage': coverage_result.get('coverage_percentage', 0)
                 }
             }
         

@@ -330,6 +330,35 @@ footer {
     font-size: 0.9em;
 }
 
+/* Coverage Info */
+.coverage-info {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f0f8ff;
+    border-left: 4px solid var(--primary-color);
+    border-radius: 8px;
+}
+
+.coverage-info h3 {
+    color: var(--primary-color);
+    margin-bottom: 15px;
+}
+
+.coverage-info h4 {
+    color: var(--text-color);
+    margin-top: 15px;
+    margin-bottom: 10px;
+}
+
+.coverage-info ul {
+    margin-left: 20px;
+    color: var(--text-color);
+}
+
+.coverage-info li {
+    margin: 5px 0;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     header h1 {

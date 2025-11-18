@@ -140,3 +140,32 @@ System rozwiązuje problem przetwarzania dużych dokumentów na średniej klasy 
 
 **Status:** Zakończone pomyślnie - wersja Qwen gotowa do użycia jako osobne repozytorium
 
+## 2024-12-XX (Data dodania nowych funkcjonalności)
+
+### Dodanie obsługi PDF/TXT, śledzenia stron, weryfikacji i pokrycia
+
+**Akcja:** Dodanie brakujących funkcjonalności do aplikacji.
+
+**Wykonane kroki:**
+1. Utworzono `utils/document_extractor.py` - uniwersalny ekstraktor obsługujący .docx, .pdf, .txt
+2. Dodano śledzenie numerów stron dla wszystkich formatów dokumentów
+3. Utworzono `utils/documentation_validator.py` - weryfikacja dokumentacji przed generowaniem
+4. Utworzono `utils/coverage_checker.py` - sprawdzanie pokrycia dokumentacji testami
+5. Zaktualizowano `document_processor.py` do użycia nowych modułów
+6. Dodano weryfikację dokumentacji PRZED generowaniem scenariuszy (zatrzymuje przy błędach krytycznych)
+7. Dodano sprawdzanie pokrycia PO wygenerowaniu scenariuszy
+8. Zaktualizowano backend do obsługi .pdf i .txt
+9. Zaktualizowano frontend do wyświetlania informacji o pokryciu i stronach
+10. Zaktualizowano requirements.txt (PyPDF2, pdf2image, Pillow)
+11. Skopiowano wszystkie zmiany do ScenarzystaQwen
+
+**Efekt:**
+- ✅ Obsługa formatów .docx, .pdf, .txt
+- ✅ Śledzenie numerów stron w dokumentacji
+- ✅ Weryfikacja dokumentacji przed generowaniem (zatrzymuje przy błędach)
+- ✅ System sprawdzający pokrycie dokumentacji testami
+- ✅ Wyświetlanie procentu pokrycia i rekomendacji w interfejsie
+- ✅ Wszystkie funkcjonalności działają w obu wersjach (Ollama i Qwen)
+
+**Status:** Zakończone pomyślnie - wszystkie funkcjonalności dodane
+

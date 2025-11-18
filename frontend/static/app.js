@@ -164,6 +164,7 @@ function showResults(result) {
     
     // Statystyki
     const stats = result.statistics || {};
+    const coverage = result.coverage || {};
     statsDiv.innerHTML = `
         <div class="stat-item">
             <div class="stat-value">${stats.text_chunks || 0}</div>
@@ -174,14 +175,35 @@ function showResults(result) {
             <div class="stat-label">Obrazy</div>
         </div>
         <div class="stat-item">
-            <div class="stat-value">${stats.batches || 0}</div>
-            <div class="stat-label">Partie</div>
+            <div class="stat-value">${stats.total_pages || 0}</div>
+            <div class="stat-label">Strony Dokumentacji</div>
         </div>
         <div class="stat-item">
             <div class="stat-value">${stats.test_cases || 0}</div>
             <div class="stat-label">Scenariusze Testowe</div>
         </div>
+        <div class="stat-item">
+            <div class="stat-value">${coverage.coverage_percentage || 0}%</div>
+            <div class="stat-label">Pokrycie Dokumentacji</div>
+        </div>
     `;
+    
+    // Wyświetl informacje o pokryciu
+    if (coverage.recommendations && coverage.recommendations.length > 0) {
+        const coverageDiv = document.createElement('div');
+        coverageDiv.className = 'coverage-info';
+        coverageDiv.innerHTML = `
+            <h3>Informacje o Pokryciu</h3>
+            <p><strong>Pokrycie:</strong> ${coverage.coverage_percentage}%</p>
+            <p><strong>Pokryte sekcje:</strong> ${coverage.covered_sections?.length || 0} / ${coverage.statistics?.total_sections || 0}</p>
+            <p><strong>Pokryte strony:</strong> ${coverage.covered_pages?.length || 0} / ${coverage.statistics?.total_pages || 0}</p>
+            <h4>Rekomendacje:</h4>
+            <ul>
+                ${coverage.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+            </ul>
+        `;
+        statsDiv.appendChild(coverageDiv);
+    }
     
     // Przycisk pobierania
     if (result.excel_path) {
