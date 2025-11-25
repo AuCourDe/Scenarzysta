@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCENARZYSTA - System Generujący Scenariusze Testowe</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-title">
+                <h1>SCENARZYSTA</h1>
+                <p class="header-subtitle">System Generujący Scenariusze Testowe</p>
+            </div>
+            <div class="header-controls">
+                <div class="theme-toggle-wrapper">
+                    <label class="theme-toggle" for="theme-toggle">
+                        <input type="checkbox" id="theme-toggle" class="theme-toggle-input">
+                        <span class="theme-toggle-slider">
+                            <span class="theme-toggle-icon">🦇</span>
+                        </span>
+                    </label>
+                    <div class="theme-message" id="theme-message"></div>
+                </div>
+                <div class="user-info">
+                    <span id="user-id-display">ID Użytkownika: <strong id="current-user-id">-</strong></span>
+                    <button id="new-user-btn" class="btn btn-secondary">Nowy użytkownik</button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- Sekcja przesyłania plików -->
+            <section class="upload-section">
+                <h2>Prześlij dokument</h2>
+                <form id="upload-form">
+                    <div class="file-input-wrapper">
+                        <input type="file" id="file-input" name="file" accept=".docx" required>
+                        <label for="file-input" class="file-label">
+                            <span class="file-label-text">Wybierz plik .docx</span>
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="upload-btn">
+                        Prześlij i przetwórz
+                    </button>
+                </form>
+            </section>
+
+            <!-- Sekcja kolejki zadań -->
+            <section class="queue-section">
+                <h2>Kolejka zadań</h2>
+                <div class="queue-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Zadania w kolejce:</span>
+                        <span class="stat-value" id="pending-count">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Aktualnie przetwarzane:</span>
+                        <span class="stat-value" id="processing-count">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Szacowany czas oczekiwania:</span>
+                        <span class="stat-value" id="wait-time">-</span>
+                    </div>
+                </div>
+
+                <div class="tasks-list" id="tasks-list">
+                    <p class="no-tasks">Brak zadań w kolejce</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
