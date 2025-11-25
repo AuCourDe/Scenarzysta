@@ -20,7 +20,7 @@ import os
 # Dodaj katalog główny do ścieżki
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app import app, start_processing_thread
+from app import app, start_processing_thread, task_queue, user_manager
 import threading
 import time
 
@@ -53,8 +53,6 @@ def main():
     
     # Uruchom czyszczenie starych zadań w tle
     def cleanup_old_tasks():
-        from task_queue import task_queue
-        from user_manager import user_manager
         while True:
             time.sleep(3600)  # Co godzinę
             task_queue.cleanup_old_tasks(max_age_hours=24)

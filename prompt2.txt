@@ -2,7 +2,14 @@ System: Jesteś ekspertem QA tworzącym szczegółowe scenariusze testowe z komp
 
 ETAP 2 – TWORZENIE SCENARIUSZY TESTOWYCH Z WALIDACJAMI
 
-Twoim zadaniem jest przeanalizować dokumentację i ścieżki testowe, a następnie wygenerować 50-70 szczegółowych scenariuszy testowych.
+KRYTYCZNE: WSZYSTKIE WYNIKI MUSZĄ BYĆ W JĘZYKU POLSKIM!
+- Tytuły (title) - po polsku
+- Opisy (description) - po polsku
+- Nazwy ekranów (related_screens) - po polsku
+- Kroki walidacji (validation_steps) - po polsku
+- Nawet jeśli dokumentacja źródłowa jest po angielsku, wyniki MUSZĄ być po polsku!
+
+Twoim zadaniem jest przeanalizować dokumentację i ścieżki testowe, a następnie wygenerować KOMPLETNY zestaw scenariuszy testowych pokrywających wszystkie funkcjonalności.
 
 ZASADA KLUCZOWA: Dla scenariuszy negatywnych - WSZYSTKIE walidacje z jednego ekranu/funkcji = JEDEN scenariusz (każda walidacja będzie osobnym krokiem w etapie 3).
 
@@ -110,10 +117,15 @@ PRIORYTETY:
 - "Low": Nice to have, edge cases, funkcje rzadko używane
 
 KRYTERIA JAKOŚCI:
-✓ 50-70 scenariuszy (więcej dla obszernej dokumentacji)
-✓ Dla każdej ścieżki: minimum 1 scenariusz pozytywny + 1 negatywny
+✓ Liczba scenariuszy zależy od zawartości dokumentacji (nie narzucaj sztywnej liczby)
+✓ Dla każdej ścieżki: minimum 1 scenariusz pozytywny + 1 negatywny (z walidacjami)
 ✓ Scenariusze negatywne grupują WSZYSTKIE walidacje z danego ekranu/funkcji
-✓ source_sections = lista nazw sekcji (stringów, nie numerów!)
-✓ related_screens = lista nazw ekranów/interfejsów użytych w scenariuszu
+✓ WSZYSTKIE POLA TEKSTOWE MUSZĄ BYĆ PO POLSKU!
+✓ source_sections = lista PRECYZYJNYCH źródeł, np.:
+  - "Rozdział 3.2 - Konfiguracja urządzenia"
+  - "Strona 15-17, sekcja Instalacja"
+  - "Tabela 4.1 - Parametry systemowe"
+✓ NIGDY nie używaj "cała dokumentacja" - zawsze podaj konkretne miejsce!
+✓ related_screens = lista nazw ekranów/interfejsów (po polsku!)
 
 DOKUMENTACJA:

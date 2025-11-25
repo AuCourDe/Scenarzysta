@@ -115,36 +115,40 @@ else
     fi
 fi
 
-# 4. Sprawdź czy model gemma3:12B jest pobrany
+# 4. Wybierz model Ollama
 echo ""
 print_info "Sprawdzanie modelu AI..."
 echo ""
 
-if ollama list | grep -q "gemma3:12B"; then
-    print_success "Model gemma3:12B dostępny"
-else
-    print_warning "Model gemma3:12B nie jest pobrany!"
-    echo ""
-    echo "   Ten system wymaga modelu gemma3:12B (lub gemma2:2b)"
-    echo "   Rozmiar: ~7.4GB"
-    echo ""
-    read -p "   Czy chcesz pobrać model teraz? (t/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Tt]$ ]]; then
-        print_info "Pobieram model gemma3:12B..."
-        ollama pull gemma3:12B
-        
-        if [ $? -eq 0 ]; then
-            print_success "Model gemma3:12B pobrany"
-        else
-            print_error "Nie udało się pobrać modelu!"
-            echo "   Możesz spróbować ręcznie: ollama pull gemma3:12B"
-            echo "   Lub użyć mniejszego modelu: ollama pull gemma2:2b"
-            exit 1
-        fi
-    else
-        print_warning "Kontynuuję bez modelu - aplikacja może nie działać!"
-    fi
+if ! command -v ollama &> /dev/null; then
+    print_error "Ollama nie jest dostępna."
+    exit 1
+fi
+
+mapfile -t OLLAMA_MODELS < <(ollama list | awk 'NR>1 {print $1}')
+
+if [ ${#OLLAMA_MODELS[@]} -eq 0 ]; then
+    print_error "Brak pobranych modeli Ollama!"
+    echo "   Użyj: ollama pull gemma3:12B (lub innego modelu wizyjnego, np. llava, llama3.2-vision)"
+    exit 1
+fi
+
+print_info "Dostępne modele (🔎 zalecane: gemma3, llava, llama3.2-vision – obsługują grafikę)."
+for idx in "${!OLLAMA_MODELS[@]}"; do
+    echo "   $((idx + 1)). ${OLLAMA_MODELS[$idx]}"
+done
+
+read -p "Wybierz model (domyślnie 1): " MODEL_CHOICE
+if ! [[ "$MODEL_CHOICE" =~ ^[0-9]+$ ]] || [ "$MODEL_CHOICE" -lt 1 ] || [ "$MODEL_CHOICE" -gt ${#OLLAMA_MODELS[@]} ]; then
+    MODEL_CHOICE=1
+fi
+
+SELECTED_MODEL=${OLLAMA_MODELS[$((MODEL_CHOICE - 1))]}
+export OLLAMA_MODEL="$SELECTED_MODEL"
+print_success "Wybrano model: $SELECTED_MODEL"
+
+if [[ ! "$SELECTED_MODEL" =~ (gemma|llava|vision|clip|omni|grip) ]]; then
+    print_warning "Wybrany model może nie obsługiwać analizy obrazów – zalecane są modele wizyjne."
 fi
 
 # 5. Sprawdź czy zależności Python są zainstalowane
@@ -234,7 +238,7 @@ echo -e "${BLUE}═════════════════════�
 echo ""
 print_info "Konfiguracja:"
 echo "   • Ollama URL: http://localhost:11434"
-echo "   • Model: gemma3:12B"
+echo "   • Model: ${OLLAMA_MODEL:-nie ustawiono}"
 echo "   • Limit kontekstu: 16k tokenów"
 echo "   • max_tokens: 8192"
 echo "   • Fragmentacja: WŁĄCZONA (dla dokumentów 500-800 stron)"

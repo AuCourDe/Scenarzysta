@@ -20,6 +20,7 @@ class TaskStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    STOPPED = "stopped"  # Zatrzymany przez użytkownika (możliwy restart)
 
 
 @dataclass
@@ -37,10 +38,19 @@ class Task:
     progress: float = 0.0  # 0.0 - 100.0
     error_message: Optional[str] = None
     result_path: Optional[str] = None
+    analyze_images: bool = False  # Czy analizować obrazy przez LLM
+    file_size: int = 0  # Rozmiar pliku (do restartu)
+    correlate_documents: bool = False  # Eksperymentalna funkcja korelacji dokumentów
+    
+    # Dynamiczny ETA bazujący na rzeczywistym postępie
+    dynamic_eta: Optional[float] = None  # Szacowany pozostały czas z document_processor
+    current_stage: int = 0  # Aktualny etap (1, 2, 3)
+    total_stages: int = 3  # Całkowita liczba etapów
     
     def get_estimated_time_remaining(self) -> Optional[float]:
         """
         Oblicza szacowany pozostały czas do zakończenia zadania.
+        Preferuje dynamiczny ETA z document_processor jeśli dostępny.
         
         Returns:
             Szacowany czas w sekundach lub None
@@ -48,23 +58,34 @@ class Task:
         if self.status == TaskStatus.COMPLETED or self.status == TaskStatus.FAILED:
             return 0.0
         
-        # Dla zadań oczekujących zwracamy minimalny sensowny czas,
-        # żeby uniknąć sytuacji "0s", gdy w tle ładuje się model AI.
+        # Dla zadań oczekujących zwracamy minimalny sensowny czas
         if self.status == TaskStatus.PENDING:
             if self.estimated_duration is None:
                 return None
-            # Minimalny czas oczekiwania to 60 sekund
             return max(self.estimated_duration, 60.0)
         
-        if self.status == TaskStatus.PROCESSING and self.started_at and self.estimated_duration:
-            elapsed = (datetime.now() - self.started_at).total_seconds()
-            remaining = max(0, self.estimated_duration - elapsed)
-            # Uwzględnij postęp
-            if self.progress > 0:
-                remaining = remaining * (1 - self.progress / 100.0)
-            # Nigdy nie pokazuj "0s", dopóki zadanie nie jest formalnie zakończone
-            # (model może jeszcze analizować dokument lub ładować się w pamięci)
-            return max(remaining, 10.0)
+        if self.status == TaskStatus.PROCESSING:
+            # PRIORYTET 1: Użyj dynamicznego ETA z document_processor jeśli dostępny
+            if self.dynamic_eta is not None and self.dynamic_eta > 0:
+                return max(self.dynamic_eta, 5.0)
+            
+            # PRIORYTET 2: Oblicz na podstawie postępu
+            if self.started_at and self.progress > 0:
+                elapsed = (datetime.now() - self.started_at).total_seconds()
+                # Estymacja: czas_całkowity = elapsed / (progress/100)
+                # Pozostały czas = czas_całkowity - elapsed
+                if self.progress < 100:
+                    estimated_total = elapsed / (self.progress / 100.0)
+                    remaining = estimated_total - elapsed
+                    return max(remaining, 5.0)
+            
+            # PRIORYTET 3: Fallback na estimated_duration
+            if self.started_at and self.estimated_duration:
+                elapsed = (datetime.now() - self.started_at).total_seconds()
+                remaining = max(0, self.estimated_duration - elapsed)
+                if self.progress > 0:
+                    remaining = remaining * (1 - self.progress / 100.0)
+                return max(remaining, 10.0)
         
         return None
     
@@ -92,7 +113,12 @@ class Task:
             "result_path": self.result_path,
             "result_filename": result_filename,
             "estimated_time_remaining": self.get_estimated_time_remaining(),
-            "position_in_queue": None  # będzie ustawione przez TaskQueue
+            "position_in_queue": None,  # będzie ustawione przez TaskQueue
+            "analyze_images": self.analyze_images,
+            "correlate_documents": self.correlate_documents,
+            "current_stage": self.current_stage,
+            "total_stages": self.total_stages,
+            "can_restart": self.status in (TaskStatus.STOPPED, TaskStatus.FAILED, TaskStatus.CANCELLED)
         }
 
 
@@ -110,7 +136,8 @@ class TaskQueue:
         self._history: List[Dict] = []  # Historia zakończonych zadań
         self._max_history = 100  # Maksymalna liczba rekordów w historii
         
-    def add_task(self, user_id: str, filename: str, file_size: int) -> str:
+    def add_task(self, user_id: str, filename: str, file_size: int, 
+                 analyze_images: bool = False, correlate_documents: bool = False) -> str:
         """
         Dodaje zadanie do kolejki.
         
@@ -118,6 +145,8 @@ class TaskQueue:
             user_id: Identyfikator użytkownika
             filename: Nazwa pliku
             file_size: Rozmiar pliku w bajtach
+            analyze_images: Czy analizować obrazy przez LLM (domyślnie False)
+            correlate_documents: Czy korelować dokumenty (funkcja eksperymentalna)
             
         Returns:
             task_id: Identyfikator utworzonego zadania
@@ -126,12 +155,20 @@ class TaskQueue:
         
         # Estymacja czasu na podstawie rozmiaru pliku i historii
         estimated_duration = self._estimate_duration(file_size)
+        # Jeśli analiza obrazów jest włączona, dodaj więcej czasu
+        if analyze_images:
+            estimated_duration *= 2  # Podwój estymację dla analizy obrazów
+        if correlate_documents:
+            estimated_duration *= 1.5  # Korelacja dokumentów zajmuje więcej czasu
         
         task = Task(
             task_id=task_id,
             user_id=user_id,
             filename=filename,
-            estimated_duration=estimated_duration
+            estimated_duration=estimated_duration,
+            analyze_images=analyze_images,
+            file_size=file_size,
+            correlate_documents=correlate_documents
         )
         
         with self._lock:
@@ -243,6 +280,21 @@ class TaskQueue:
             if task:
                 task.progress = max(0.0, min(100.0, progress))
     
+    def update_dynamic_eta(self, task_id: str, eta: Optional[float], current_stage: int = 0):
+        """
+        Aktualizuje dynamiczny ETA i etap z document_processor.
+        
+        Args:
+            task_id: ID zadania
+            eta: Szacowany pozostały czas w sekundach
+            current_stage: Aktualny etap (1, 2, 3)
+        """
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task:
+                task.dynamic_eta = eta
+                task.current_stage = current_stage
+    
     def complete_task(self, task_id: str, result_path: Optional[str] = None):
         """Oznacza zadanie jako zakończone."""
         with self._lock:
@@ -290,6 +342,16 @@ class TaskQueue:
                     self._queue.remove(task_id)
                 return True
             return False
+    
+    def remove_task(self, task_id: str):
+        """Całkowicie usuwa zadanie z kolejki."""
+        with self._lock:
+            if task_id in self._queue:
+                self._queue.remove(task_id)
+            if task_id in self._tasks:
+                del self._tasks[task_id]
+            if self._current_task_id == task_id:
+                self._current_task_id = None
     
     def get_next_task(self) -> Optional[Task]:
         """Pobiera następne zadanie do przetworzenia."""
@@ -367,3 +429,81 @@ class TaskQueue:
                 del self._tasks[task_id]
                 if task_id in self._queue:
                     self._queue.remove(task_id)
+    
+    def stop_task(self, task_id: str) -> bool:
+        """
+        Zatrzymuje zadanie (możliwy późniejszy restart).
+        
+        Args:
+            task_id: ID zadania do zatrzymania
+            
+        Returns:
+            True jeśli zatrzymano, False jeśli nie można zatrzymać
+        """
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return False
+            
+            # Można zatrzymać tylko zadania w trakcie przetwarzania lub oczekujące
+            if task.status not in (TaskStatus.PROCESSING, TaskStatus.PENDING):
+                return False
+            
+            task.status = TaskStatus.STOPPED
+            task.completed_at = datetime.now()
+            task.error_message = "Zatrzymane przez użytkownika"
+            
+            # Usuń z kolejki jeśli było oczekujące
+            if task_id in self._queue:
+                self._queue.remove(task_id)
+            
+            # Wyczyść current_task_id jeśli to było aktywne zadanie
+            if self._current_task_id == task_id:
+                self._current_task_id = None
+            
+            return True
+    
+    def restart_task(self, task_id: str) -> Optional[str]:
+        """
+        Restartuje zatrzymane/błędne zadanie zachowując to samo ID.
+        Zadanie trafia na koniec kolejki ze stanem PENDING.
+        
+        Args:
+            task_id: ID zadania do restartu
+            
+        Returns:
+            To samo task_id lub None jeśli nie można zrestartować
+        """
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return None
+            
+            # Można restartować tylko zatrzymane, błędne lub anulowane
+            if task.status not in (TaskStatus.STOPPED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+                return None
+            
+            # Resetuj stan zadania
+            task.status = TaskStatus.PENDING
+            task.progress = 0.0
+            task.error_message = None
+            task.started_at = None
+            task.completed_at = None
+            task.actual_duration = None
+            task.current_stage = 0
+            task.result_path = None
+            
+            # Usuń z kolejki jeśli jest (nie powinno być, ale dla pewności)
+            if task_id in self._queue:
+                self._queue.remove(task_id)
+            
+            # Dodaj na koniec kolejki
+            self._queue.append(task_id)
+            
+            return task_id
+    
+    def is_task_stopped(self, task_id: str) -> bool:
+        """Sprawdza czy zadanie zostało zatrzymane."""
+        with self._lock:
+            task = self._tasks.get(task_id)
+            return task is not None and task.status == TaskStatus.STOPPED

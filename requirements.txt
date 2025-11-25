@@ -10,7 +10,11 @@ flask-cors==4.0.0
 python-docx==1.1.0
 openpyxl==3.1.2
 
-# Przetwarzanie obrazów (opcjonalne, dla przyszłej integracji z modelami wizyjnymi)
+# Przetwarzanie PDF
+PyMuPDF==1.23.6
+pdfplumber==0.10.3
+
+# Przetwarzanie obrazów
 Pillow==10.1.0
 
 # Baza danych wektorowa (opcjonalne, jeśli będzie potrzebne)

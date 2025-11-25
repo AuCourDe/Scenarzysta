@@ -2,6 +2,34 @@
 let currentUserId = null;
 let refreshInterval = null;
 
+// Toast notifications
+function showToast(message, type = 'info', duration = 10000) {
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    
+    const icons = {
+        success: '✓',
+        error: '✗',
+        info: 'ℹ',
+        warning: '⚠'
+    };
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span>${message}</span>`;
+    
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 // Komunikaty humorystyczne dla trybu jasnego (nietoperz/księżyc)
 const lightModeMessages = [
     "Założ okulary przeciwsłoneczne",
@@ -110,11 +138,10 @@ function showThemeMessage(messages) {
     messageEl.textContent = randomMessage;
     messageEl.classList.add('show');
     
-    // Ukryj po 3-5 sekundach
-    const duration = 3000 + Math.random() * 2000; // 3-5 sekund
+    // Ukryj po 5 sekundach
     setTimeout(() => {
         messageEl.classList.remove('show');
-    }, duration);
+    }, 5000);
 }
 
 // Utworzenie nowego użytkownika
@@ -130,7 +157,7 @@ async function createNewUser() {
         document.getElementById('current-user-id').textContent = currentUserId.substring(0, 8) + '...';
     } catch (error) {
         console.error('Błąd podczas tworzenia użytkownika:', error);
-        alert('Nie udało się utworzyć użytkownika');
+        showToast('Nie udało się utworzyć użytkownika', 'error');
     }
 }
 
@@ -139,17 +166,19 @@ function setupEventListeners() {
     // Przesyłanie pliku
     document.getElementById('upload-form').addEventListener('submit', handleFileUpload);
     
-    // Nowy użytkownik
-    document.getElementById('new-user-btn').addEventListener('click', createNewUser);
-    
     // Przełącznik trybu
     document.getElementById('theme-toggle').addEventListener('change', toggleTheme);
     
     // Zmiana pliku
     document.getElementById('file-input').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            document.querySelector('.file-label-text').textContent = file.name;
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            if (files.length === 1) {
+                document.querySelector('.file-label-text').textContent = files[0].name;
+            } else {
+                document.querySelector('.file-label-text').textContent = `Wybrano ${files.length} plików`;
+            }
+            updateSelectedFiles();
         }
     });
 }
@@ -159,49 +188,99 @@ async function handleFileUpload(e) {
     e.preventDefault();
     
     const fileInput = document.getElementById('file-input');
-    const file = fileInput.files[0];
+    const files = fileInput.files;
+    const analyzeImages = document.getElementById('analyze-images').checked;
+    const correlateDocuments = document.getElementById('correlate-documents')?.checked || false;
     
-    if (!file) {
-        alert('Wybierz plik');
+    if (!files || files.length === 0) {
+        showToast('Wybierz co najmniej jeden plik', 'warning');
         return;
     }
     
     if (!currentUserId) {
-        alert('Brak użytkownika. Tworzenie nowego...');
+        showToast('Brak użytkownika. Tworzenie nowego...', 'info', 3000);
         await createNewUser();
     }
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('user_id', currentUserId);
     
     const uploadBtn = document.getElementById('upload-btn');
     uploadBtn.disabled = true;
     uploadBtn.textContent = 'Przesyłanie...';
     
+    let successCount = 0;
+    let failCount = 0;
+    
     try {
-        const response = await fetch('/api/tasks', {
-            method: 'POST',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            alert(`Dokument przesłany pomyślnie! ID zadania: ${data.task_id}`);
-            fileInput.value = '';
-            document.querySelector('.file-label-text').textContent = 'Wybierz plik .docx';
-            refreshQueueStatus();
-        } else {
-            alert(`Błąd: ${data.error}`);
+        // Prześlij każdy plik osobno
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            uploadBtn.textContent = `Przesyłanie ${i + 1}/${files.length}...`;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('user_id', currentUserId);
+            formData.append('analyze_images', analyzeImages.toString());
+            formData.append('correlate_documents', correlateDocuments.toString());
+            
+            const response = await fetch('/api/tasks', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                successCount++;
+            } else {
+                failCount++;
+                console.error(`Błąd przesyłania ${file.name}: ${data.error}`);
+            }
         }
+        
+        // Podsumowanie
+        const imageInfo = analyzeImages ? ' (z analizą obrazów)' : '';
+        const correlateInfo = correlateDocuments ? ' (z korelacją)' : '';
+        
+        if (failCount === 0) {
+            showToast(`Przesłano ${successCount} plik(ów) pomyślnie${imageInfo}${correlateInfo}!`, 'success');
+        } else {
+            showToast(`Przesłano ${successCount} plik(ów), ${failCount} błędów.`, 'warning');
+        }
+        
+        // Reset formularza
+        fileInput.value = '';
+        document.querySelector('.file-label-text').textContent = 'Wybierz pliki (docx, pdf, xlsx, txt)';
+        document.getElementById('selected-files').innerHTML = '';
+        document.getElementById('analyze-images').checked = false;
+        if (document.getElementById('correlate-documents')) {
+            document.getElementById('correlate-documents').checked = false;
+        }
+        refreshQueueStatus();
+        
     } catch (error) {
         console.error('Błąd podczas przesyłania:', error);
-        alert('Nie udało się przesłać pliku');
+        showToast('Nie udało się przesłać plików', 'error');
     } finally {
         uploadBtn.disabled = false;
         uploadBtn.textContent = 'Prześlij i przetwórz';
     }
+}
+
+// Wyświetlanie wybranych plików
+function updateSelectedFiles() {
+    const fileInput = document.getElementById('file-input');
+    const selectedFilesDiv = document.getElementById('selected-files');
+    
+    if (!fileInput.files || fileInput.files.length === 0) {
+        selectedFilesDiv.innerHTML = '';
+        return;
+    }
+    
+    let html = '';
+    for (const file of fileInput.files) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        html += `<span class="selected-file"><span class="file-ext">${ext}</span>${file.name}</span>`;
+    }
+    selectedFilesDiv.innerHTML = html;
 }
 
 // Odświeżanie statusu kolejki
@@ -232,18 +311,24 @@ function updateQueueDisplay(queueData) {
         document.getElementById('wait-time').textContent = '-';
     }
     
-    // Lista zadań
+    // Lista zadań - filtruj zakończone (te są w historii)
     const tasksList = document.getElementById('tasks-list');
     
-    if (!queueData.tasks || queueData.tasks.length === 0) {
-        tasksList.innerHTML = '<p class="no-tasks">Brak zadań w kolejce</p>';
+    // Pokaż tylko: pending, processing, stopped (możliwy restart)
+    // Zakończone (completed, failed, cancelled) są w historii
+    const activeTasks = (queueData.tasks || []).filter(task => 
+        ['pending', 'processing', 'stopped'].includes(task.status)
+    );
+    
+    if (activeTasks.length === 0) {
+        tasksList.innerHTML = '<p class="no-tasks">Brak aktywnych zadań w kolejce</p>';
         return;
     }
     
-    tasksList.innerHTML = queueData.tasks.map(task => createTaskCard(task)).join('');
+    tasksList.innerHTML = activeTasks.map(task => createTaskCard(task)).join('');
     
     // Dodaj event listenery dla przycisków
-    queueData.tasks.forEach(task => {
+    activeTasks.forEach(task => {
         if (task.status === 'pending') {
             const cancelBtn = document.getElementById(`cancel-btn-${task.task_id}`);
             if (cancelBtn) {
@@ -255,6 +340,31 @@ function updateQueueDisplay(queueData) {
             const downloadBtn = document.getElementById(`download-btn-${task.task_id}`);
             if (downloadBtn) {
                 downloadBtn.addEventListener('click', () => downloadResults(task.task_id));
+            }
+            
+            const artifactsBtn = document.getElementById(`artifacts-btn-${task.task_id}`);
+            if (artifactsBtn) {
+                artifactsBtn.addEventListener('click', () => showArtifacts(task.task_id));
+            }
+        }
+        
+        // Przycisk zatrzymania
+        if (task.status === 'processing') {
+            const stopBtn = document.getElementById(`stop-btn-${task.task_id}`);
+            if (stopBtn) {
+                stopBtn.addEventListener('click', () => showStopConfirmation(task.task_id, task.filename));
+            }
+        }
+        
+        // Przycisk restartu
+        if (task.can_restart) {
+            const restartBtn = document.getElementById(`restart-btn-${task.task_id}`);
+            if (restartBtn) {
+                restartBtn.addEventListener('click', () => restartTask(task.task_id));
+            }
+            const removeBtn = document.getElementById(`remove-btn-${task.task_id}`);
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => removeFromQueue(task.task_id));
             }
         }
 
@@ -273,7 +383,8 @@ function createTaskCard(task) {
         'processing': 'Przetwarzanie',
         'completed': 'Zakończone',
         'failed': 'Błąd',
-        'cancelled': 'Anulowane'
+        'cancelled': 'Anulowane',
+        'stopped': 'Zatrzymane'
     }[task.status] || task.status;
     
     const progressBar = task.status === 'processing' || task.status === 'completed'
@@ -287,13 +398,25 @@ function createTaskCard(task) {
         `
         : '';
     
-    const timeEstimate = task.estimated_time_remaining !== null && task.estimated_time_remaining !== undefined
-        ? `
+    // Informacja o etapie i czasie
+    let timeEstimate = '';
+    if (task.status === 'processing') {
+        const stageInfo = task.current_stage > 0 ? ` (Etap ${task.current_stage}/${task.total_stages})` : '';
+        const etaText = task.estimated_time_remaining !== null && task.estimated_time_remaining !== undefined
+            ? formatTime(task.estimated_time_remaining)
+            : 'obliczanie...';
+        timeEstimate = `
             <div class="time-estimate">
-                <strong>Szacowany czas do zakończenia:</strong> ${formatTime(task.estimated_time_remaining)}
+                <strong>Szacowany czas do zakończenia${stageInfo}:</strong> ${etaText}
             </div>
-        `
-        : '';
+        `;
+    } else if (task.estimated_time_remaining !== null && task.estimated_time_remaining !== undefined && task.status === 'pending') {
+        timeEstimate = `
+            <div class="time-estimate">
+                <strong>Szacowany czas:</strong> ${formatTime(task.estimated_time_remaining)}
+            </div>
+        `;
+    }
     
     const positionInfo = task.position_in_queue
         ? `<div class="task-info-item">
@@ -307,12 +430,36 @@ function createTaskCard(task) {
         : '';
     
     const actions = [];
+    // Przyciski zatrzymania i anulowania
     if (task.status === 'pending') {
         actions.push(`<button class="btn btn-danger" id="cancel-btn-${task.task_id}">Anuluj</button>`);
     }
-    if (task.status === 'completed' && task.result_path) {
-        actions.push(`<button class="btn btn-success" id="download-btn-${task.task_id}">Pobierz wyniki</button>`);
+    if (task.status === 'processing') {
+        actions.push(`<button class="btn btn-warning" id="stop-btn-${task.task_id}">Zatrzymaj</button>`);
     }
+    // Przycisk restartu dla zatrzymanych/błędnych/anulowanych
+    if (task.can_restart) {
+        actions.push(`<button class="btn btn-primary" id="restart-btn-${task.task_id}">Uruchom ponownie</button>`);
+        actions.push(`<button class="btn btn-danger" id="remove-btn-${task.task_id}">Usuń z kolejki</button>`);
+    }
+    if (task.status === 'completed' && task.result_path) {
+        actions.push(`<button class="btn btn-success" id="download-btn-${task.task_id}">Pobierz Excel</button>`);
+        actions.push(`<button class="btn btn-info" id="artifacts-btn-${task.task_id}">Wszystkie artefakty</button>`);
+    }
+    
+    // Checkboxy opcji (zablokowane)
+    const optionsInfo = `
+        <div class="task-options">
+            <label class="option-badge ${task.analyze_images ? 'active' : 'inactive'}">
+                <input type="checkbox" ${task.analyze_images ? 'checked' : ''} disabled>
+                <span>Analiza obrazów</span>
+            </label>
+            <label class="option-badge experimental ${task.correlate_documents ? 'active' : 'inactive'}">
+                <input type="checkbox" ${task.correlate_documents ? 'checked' : ''} disabled>
+                <span>Korelacja dok.</span>
+            </label>
+        </div>
+    `;
     
     return `
         <div class="task-card">
@@ -323,11 +470,11 @@ function createTaskCard(task) {
             <div class="task-info">
                 <div class="task-info-item">
                     <div class="task-info-label">Użytkownik</div>
-                    <div class="task-info-value">${task.user_id ? task.user_id.substring(0, 8) + '...' : '-'}</div>
+                    <div class="task-info-value task-id-value" title="${task.user_id || '-'}">${task.user_id ? task.user_id.substring(0, 16) : '-'}</div>
                 </div>
                 <div class="task-info-item">
                     <div class="task-info-label">ID zadania</div>
-                    <div class="task-info-value">${task.task_id.substring(0, 8)}...</div>
+                    <div class="task-info-value task-id-value" title="${task.task_id}">${task.task_id.substring(0, 16)}</div>
                 </div>
                 <div class="task-info-item">
                     <div class="task-info-label">Utworzono</div>
@@ -353,6 +500,7 @@ function createTaskCard(task) {
                     </div>
                 ` : ''}
             </div>
+            ${optionsInfo}
             ${progressBar}
             ${timeEstimate}
             ${errorMessage}
@@ -378,20 +526,207 @@ async function cancelTask(taskId) {
         const data = await response.json();
         
         if (response.ok) {
-            alert('Zadanie anulowane');
+            showToast('Zadanie anulowane', 'success');
             refreshQueueStatus();
         } else {
-            alert(`Błąd: ${data.error}`);
+            showToast(`Błąd: ${data.error}`, 'error');
         }
     } catch (error) {
         console.error('Błąd podczas anulowania zadania:', error);
-        alert('Nie udało się anulować zadania');
+        showToast('Nie udało się anulować zadania', 'error');
+    }
+}
+
+// Pokazanie modalu potwierdzenia zatrzymania
+function showStopConfirmation(taskId, filename) {
+    // Usuń poprzedni modal jeśli istnieje
+    const existingModal = document.getElementById('stop-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    const modal = document.createElement('div');
+    modal.id = 'stop-modal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Zatrzymaj proces</h3>
+                <button class="modal-close" onclick="closeStopModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Czy potwierdzasz zatrzymanie operacji?</p>
+                <p class="modal-filename"><strong>${filename}</strong></p>
+                <p class="modal-warning">Po zatrzymaniu możesz uruchomić zadanie ponownie.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeStopModal()">NIE</button>
+                <button class="btn btn-danger" onclick="confirmStopTask('${taskId}')">TAK - Zatrzymaj</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+// Zamknięcie modalu zatrzymania
+function closeStopModal() {
+    const modal = document.getElementById('stop-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+// Potwierdzenie zatrzymania
+async function confirmStopTask(taskId) {
+    closeStopModal();
+    
+    try {
+        const response = await fetch(`/api/tasks/${taskId}/stop`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            showToast('Zadanie zatrzymane. Możesz je uruchomić ponownie.', 'warning');
+            refreshQueueStatus();
+        } else {
+            showToast(`Błąd: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Błąd podczas zatrzymywania zadania:', error);
+        showToast('Nie udało się zatrzymać zadania', 'error');
+    }
+}
+
+// Restart zadania
+async function restartTask(taskId) {
+    try {
+        const response = await fetch(`/api/tasks/${taskId}/restart`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            showToast('Zadanie uruchomione ponownie i dodane na koniec kolejki', 'success');
+            refreshQueueStatus();
+        } else {
+            showToast(`Błąd: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Błąd podczas restartowania zadania:', error);
+        showToast('Nie udało się uruchomić zadania ponownie', 'error');
+    }
+}
+
+// Usuwanie z kolejki (przeniesienie do historii jako błąd)
+async function removeFromQueue(taskId) {
+    try {
+        const response = await fetch(`/api/tasks/${taskId}/remove`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            showToast('Zadanie usunięte z kolejki i przeniesione do historii', 'success');
+            refreshQueueStatus();
+            refreshHistory();
+        } else {
+            showToast(`Błąd: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Błąd podczas usuwania z kolejki:', error);
+        showToast('Nie udało się usunąć zadania', 'error');
     }
 }
 
 // Pobieranie wyników
 function downloadResults(taskId) {
     window.location.href = `/api/tasks/${taskId}/download`;
+}
+
+// Pokazanie listy artefaktów
+async function showArtifacts(taskId) {
+    try {
+        const response = await fetch(`/api/tasks/${taskId}/artifacts`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            showToast(`Błąd: ${data.error}`, 'error');
+            return;
+        }
+        
+        if (data.artifacts.length === 0) {
+            showToast('Brak dostępnych artefaktów dla tego zadania.', 'warning');
+            return;
+        }
+        
+        // Stwórz modal z listą artefaktów
+        const artifactsList = data.artifacts.map(artifact => {
+            const sizeKB = (artifact.size / 1024).toFixed(1);
+            return `
+                <div class="artifact-item">
+                    <div class="artifact-info">
+                        <strong>Etap ${artifact.stage}: ${artifact.name}</strong>
+                        <span class="artifact-size">(${sizeKB} KB, ${artifact.type.toUpperCase()})</span>
+                    </div>
+                    <button class="btn btn-success btn-sm" onclick="downloadArtifact('${taskId}', '${artifact.filename}')">
+                        Pobierz
+                    </button>
+                </div>
+            `;
+        }).join('');
+        
+        // Usuń poprzedni modal jeśli istnieje
+        const existingModal = document.getElementById('artifacts-modal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // Stwórz nowy modal
+        const modal = document.createElement('div');
+        modal.id = 'artifacts-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Artefakty zadania</h3>
+                    <button class="modal-close" onclick="closeArtifactsModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>Dostępne pliki z każdego etapu przetwarzania:</p>
+                    <div class="artifacts-list">
+                        ${artifactsList}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeArtifactsModal()">Zamknij</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+    } catch (error) {
+        console.error('Błąd podczas pobierania artefaktów:', error);
+        showToast('Nie udało się pobrać listy artefaktów', 'error');
+    }
+}
+
+// Pobieranie pojedynczego artefaktu
+function downloadArtifact(taskId, filename) {
+    window.location.href = `/api/tasks/${taskId}/artifacts/${filename}`;
+}
+
+// Zamknięcie modalu artefaktów
+function closeArtifactsModal() {
+    const modal = document.getElementById('artifacts-modal');
+    if (modal) {
+        modal.remove();
+    }
 }
 
 // Formatowanie czasu
@@ -442,4 +777,215 @@ document.addEventListener('visibilitychange', () => {
             startQueueRefresh();
         }
     }
+});
+
+// ==================== HISTORIA ZADAŃ ====================
+
+// Pobieranie historii zadań
+async function refreshHistory() {
+    try {
+        const response = await fetch('/api/history?limit=50');
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error('Błąd pobierania historii:', data.error);
+            return;
+        }
+        
+        // Aktualizuj statystyki
+        document.getElementById('history-total').textContent = data.statistics.total_tasks;
+        document.getElementById('history-completed').textContent = data.statistics.completed;
+        document.getElementById('history-failed').textContent = data.statistics.failed;
+        
+        // Aktualizuj listę
+        const historyList = document.getElementById('history-list');
+        
+        if (data.entries.length === 0) {
+            historyList.innerHTML = '<p class="no-history">Brak przetworzonych plików</p>';
+            return;
+        }
+        
+        historyList.innerHTML = data.entries.map(entry => createHistoryCard(entry)).join('');
+        
+        // Dodaj event listenery dla przycisków
+        data.entries.forEach(entry => {
+            // Przycisk pobierania Excel
+            const excelArtifact = entry.artifacts ? entry.artifacts.find(a => a.type === 'xlsx') : null;
+            if (excelArtifact) {
+                const excelBtn = document.getElementById(`history-excel-btn-${entry.task_id}`);
+                if (excelBtn) {
+                    excelBtn.addEventListener('click', () => downloadHistoryArtifact(entry.task_id, excelArtifact.filename));
+                }
+            }
+            
+            // Przycisk pobrania źródła
+            if (entry.has_source) {
+                const sourceBtn = document.getElementById(`history-source-btn-${entry.task_id}`);
+                if (sourceBtn) {
+                    sourceBtn.addEventListener('click', () => downloadHistorySource(entry.task_id));
+                }
+            }
+            
+            // Przycisk artefaktów
+            if (entry.artifacts && entry.artifacts.length > 0) {
+                const artifactsBtn = document.getElementById(`history-artifacts-btn-${entry.task_id}`);
+                if (artifactsBtn) {
+                    artifactsBtn.addEventListener('click', () => showHistoryArtifacts(entry.task_id, entry.artifacts));
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Błąd podczas pobierania historii:', error);
+    }
+}
+
+// Tworzenie karty historii
+function createHistoryCard(entry) {
+    const statusClass = entry.status === 'completed' ? 'completed' : 'failed';
+    const statusText = entry.status === 'completed' ? 'Ukończone' : 'Błąd';
+    
+    const errorMessage = entry.error_message
+        ? `<div class="error-message">Błąd: ${entry.error_message}</div>`
+        : '';
+    
+    const artifactsCount = entry.artifacts ? entry.artifacts.length : 0;
+    const totalSize = entry.artifacts 
+        ? entry.artifacts.reduce((sum, a) => sum + (a.size || 0), 0)
+        : 0;
+    const sizeKB = (totalSize / 1024).toFixed(1);
+    
+    // Znajdź plik Excel w artefaktach
+    const excelArtifact = entry.artifacts ? entry.artifacts.find(a => a.type === 'xlsx') : null;
+    
+    const actions = [];
+    // Przycisk pobierania Excel (jeśli jest)
+    if (excelArtifact) {
+        actions.push(`<button class="btn btn-success btn-sm" id="history-excel-btn-${entry.task_id}">Pobierz Excel</button>`);
+    }
+    if (entry.has_source) {
+        actions.push(`<button class="btn btn-secondary btn-sm" id="history-source-btn-${entry.task_id}">Źródło</button>`);
+    }
+    if (artifactsCount > 0) {
+        actions.push(`<button class="btn btn-info btn-sm" id="history-artifacts-btn-${entry.task_id}">Artefakty (${artifactsCount})</button>`);
+    }
+    
+    // Checkboxy opcji (zablokowane)
+    const optionsInfo = `
+        <div class="task-options history-options">
+            <label class="option-badge ${entry.analyze_images ? 'active' : 'inactive'}">
+                <input type="checkbox" ${entry.analyze_images ? 'checked' : ''} disabled>
+                <span>Analiza obrazów</span>
+            </label>
+            <label class="option-badge experimental ${entry.correlate_documents ? 'active' : 'inactive'}">
+                <input type="checkbox" ${entry.correlate_documents ? 'checked' : ''} disabled>
+                <span>Korelacja dok.</span>
+            </label>
+        </div>
+    `;
+    
+    return `
+        <div class="history-card">
+            <div class="history-header">
+                <div class="history-title">${entry.filename}</div>
+                <span class="task-status ${statusClass}">${statusText}</span>
+            </div>
+            <div class="history-info">
+                <div class="history-info-item">
+                    <span class="history-label">Użytkownik:</span>
+                    <span class="history-value task-id-value" title="${entry.user_id || '-'}">${entry.user_id || '-'}</span>
+                </div>
+                <div class="history-info-item">
+                    <span class="history-label">ID zadania:</span>
+                    <span class="history-value task-id-value" title="${entry.task_id}">${entry.task_id.substring(0, 16)}</span>
+                </div>
+                <div class="history-info-item">
+                    <span class="history-label">Zakończono:</span>
+                    <span class="history-value">${formatDateTime(entry.completed_at)}</span>
+                </div>
+                <div class="history-info-item">
+                    <span class="history-label">Wygasa:</span>
+                    <span class="history-value">${formatDateTime(entry.expires_at)}</span>
+                </div>
+                <div class="history-info-item">
+                    <span class="history-label">Rozmiar:</span>
+                    <span class="history-value">${sizeKB} KB</span>
+                </div>
+            </div>
+            ${optionsInfo}
+            ${errorMessage}
+            ${actions.length > 0 ? `<div class="history-actions">${actions.join('')}</div>` : ''}
+        </div>
+    `;
+}
+
+// Pobieranie pliku źródłowego z historii
+function downloadHistorySource(taskId) {
+    window.location.href = `/api/history/${taskId}/source`;
+}
+
+// Pokazanie artefaktów z historii
+function showHistoryArtifacts(taskId, artifacts) {
+    const artifactsList = artifacts.map(artifact => {
+        const sizeKB = (artifact.size / 1024).toFixed(1);
+        return `
+            <div class="artifact-item">
+                <div class="artifact-info">
+                    <strong>Etap ${artifact.stage}: ${artifact.name}</strong>
+                    <span class="artifact-size">(${sizeKB} KB, ${artifact.type.toUpperCase()})</span>
+                </div>
+                <button class="btn btn-success btn-sm" onclick="downloadHistoryArtifact('${taskId}', '${artifact.filename}')">
+                    Pobierz
+                </button>
+            </div>
+        `;
+    }).join('');
+    
+    // Usuń poprzedni modal jeśli istnieje
+    const existingModal = document.getElementById('artifacts-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Stwórz nowy modal
+    const modal = document.createElement('div');
+    modal.id = 'artifacts-modal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Artefakty zadania</h3>
+                <button class="modal-close" onclick="closeArtifactsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Dostępne pliki z każdego etapu przetwarzania:</p>
+                <div class="artifacts-list">
+                    ${artifactsList}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeArtifactsModal()">Zamknij</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+// Pobieranie artefaktu z historii
+function downloadHistoryArtifact(taskId, filename) {
+    window.location.href = `/api/history/${taskId}/artifacts/${filename}`;
+}
+
+// Odświeżanie historii co 30 sekund
+let historyRefreshInterval = null;
+
+function startHistoryRefresh() {
+    refreshHistory(); // Odśwież od razu
+    historyRefreshInterval = setInterval(refreshHistory, 30000); // Co 30 sekund
+}
+
+// Inicjalizacja historii przy starcie
+document.addEventListener('DOMContentLoaded', () => {
+    startHistoryRefresh();
 });

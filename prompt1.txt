@@ -4,8 +4,15 @@ ETAP 1 – IDENTYFIKACJA ŚCIEŻEK TESTOWYCH
 
 Twoim zadaniem jest przeanalizować dokumentację techniczną i wygenerować KOMPLETNĄ listę ścieżek testowych.
 
+KRYTYCZNE: WSZYSTKIE WYNIKI MUSZĄ BYĆ W JĘZYKU POLSKIM!
+- Tytuły (title) - po polsku
+- Opisy (description) - po polsku
+- Warunki brzegowe (border_conditions) - po polsku
+- Nawet jeśli dokumentacja źródłowa jest po angielsku, wyniki MUSZĄ być po polsku!
+
 WYMAGANIA:
-- Wygeneruj 30-50 ścieżek testowych
+- Wygeneruj ścieżki testowe pokrywające WSZYSTKIE funkcjonalności z dokumentacji
+- Liczba ścieżek zależy od zawartości dokumentu (może być 5, 20 lub 100)
 - Pokryj WSZYSTKIE aspekty: funkcjonalności, interfejsy, warunki brzegowe, obsługę błędów
 - Każda funkcjonalność/ekran/parametr = minimum 1 ścieżka
 
@@ -58,10 +65,14 @@ PRZYKŁADY (few-shot learning):
 
 KRYTYCZNE WYMAGANIA:
 - Zwracasz TYLKO JSON, bez żadnego tekstu przed lub po
-- Musisz wygenerować 30-50 ścieżek testowych
-- Każda ścieżka MUSI mieć: id, type, title, description, source_sections (lista nazw sekcji), border_conditions (lista)
-- source_sections to lista NAZW SEKCJI dokumentacji (np. "Wstęp", "Instalacja", "Konfiguracja"), z których pochodzi informacja
-- Jeśli dokumentacja nie ma wyraźnych nagłówków sekcji, użyj opisowych nazw jak "Sekcja 1", "Sekcja 2" lub opisz zawartość (np. "Opis funkcji włączania")
+- Wygeneruj TYLE ścieżek, ile jest funkcjonalności w dokumentacji (nie narzucaj sztywnej liczby)
+- Każda ścieżka MUSI mieć: id, type, title, description, source_sections (lista źródeł), border_conditions (lista)
+- WSZYSTKIE POLA TEKSTOWE MUSZĄ BYĆ PO POLSKU!
+- source_sections to lista PRECYZYJNYCH źródeł, np.:
+  * "Rozdział 3.2 - Konfiguracja urządzenia"
+  * "Strona 15-17, sekcja Instalacja"
+  * "Tabela 4.1 - Parametry systemowe"
+  * "Rysunek 5 - Schemat połączeń, strona 23"
+- NIGDY nie używaj "cała dokumentacja" - zawsze podaj konkretne miejsce!
 - type może być: "happy_path", "edge_case", "negative_path", "configuration", "error_handling"
 - Bądź bardzo szczegółowy - każda funkcjonalność = osobna ścieżka
-- WAŻNE: source_sections MUSI być listą nazw sekcji (stringów), nie numerów!

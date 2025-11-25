@@ -1,5 +1,6 @@
 """
-Procesor dokumentów - ekstrakcja i przetwarzanie dokumentów .docx.
+Procesor dokumentów - ekstrakcja i przetwarzanie dokumentów.
+Obsługuje formaty: DOCX, PDF, XLSX, TXT
 Dane są przetwarzane tylko dla konkretnego przypadku, bez trwałego przechowywania w RAG.
 """
 import zipfile
@@ -8,7 +9,7 @@ import re
 import base64
 import requests
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import json
 from docx import Document
 from docx.document import Document as DocumentType
@@ -17,6 +18,18 @@ from docx.oxml.table import CT_Tbl
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from PIL import Image
+
+# Import ekstraktora dla innych formatów
+try:
+    from file_extractors import FileExtractor, extract_file
+    FILE_EXTRACTORS_AVAILABLE = True
+except ImportError:
+    FILE_EXTRACTORS_AVAILABLE = False
+
+
+class ContextLengthError(Exception):
+    """Błąd przekroczenia limitu kontekstu/tokenów modelu."""
+    pass
 
 
 class DocumentProcessor:
@@ -32,6 +45,180 @@ class DocumentProcessor:
         """
         self.ollama_url = ollama_url
         self.ollama_model = ollama_model
+        
+        # Śledzenie postępu dla dynamicznej estymacji czasu
+        self.processing_stats = {
+            'total_chunks': 0,
+            'processed_chunks': 0,
+            'chunk_times': [],  # Lista czasów przetwarzania chunków
+            'start_time': None,
+            'current_stage': 0,
+            'total_stages': 3
+        }
+    
+    def reset_processing_stats(self):
+        """Resetuje statystyki przetwarzania."""
+        self.processing_stats = {
+            'total_chunks': 0,
+            'processed_chunks': 0,
+            'chunk_times': [],
+            'start_time': None,
+            'current_stage': 0,
+            'total_stages': 3
+        }
+    
+    def get_dynamic_eta(self) -> Optional[float]:
+        """
+        Oblicza dynamiczny ETA na podstawie rzeczywistego postępu.
+        
+        Returns:
+            Szacowany pozostały czas w sekundach lub None
+        """
+        import time
+        stats = self.processing_stats
+        
+        if not stats['chunk_times'] or stats['total_chunks'] == 0:
+            return None
+        
+        # Średni czas na chunk
+        avg_chunk_time = sum(stats['chunk_times']) / len(stats['chunk_times'])
+        
+        # Pozostałe chunki w bieżącym etapie
+        remaining_chunks = stats['total_chunks'] - stats['processed_chunks']
+        
+        # Pozostałe etapy (każdy etap ma podobną liczbę chunków)
+        remaining_stages = stats['total_stages'] - stats['current_stage']
+        
+        # Estymacja: pozostałe chunki * średni czas + pozostałe etapy * (średni czas * średnia liczba chunków)
+        eta = remaining_chunks * avg_chunk_time
+        if remaining_stages > 0 and stats['total_chunks'] > 0:
+            eta += remaining_stages * stats['total_chunks'] * avg_chunk_time
+        
+        return eta
+    
+    def _filter_header_footer_images(self, images: List[Dict]) -> List[Dict]:
+        """
+        Filtruje obrazy z nagłówka i stopki (zazwyczaj loga).
+        
+        Heurystyka:
+        - Obrazy o nazwie zawierającej 'header', 'footer', 'logo'
+        - Bardzo małe obrazy (< 50x50 px) - często ikony
+        - Obrazy powtarzające się (ten sam hash) - loga na każdej stronie
+        
+        Args:
+            images: Lista słowników z informacjami o obrazach
+            
+        Returns:
+            Przefiltrowana lista obrazów
+        """
+        filtered = []
+        seen_sizes = {}  # Rozmiar -> liczba wystąpień
+        
+        for img in images:
+            filename = img.get('filename', '').lower()
+            path = img.get('path', '')
+            
+            # Pomiń obrazy z nazwą sugerującą logo/nagłówek/stopkę
+            skip_keywords = ['header', 'footer', 'logo', 'banner', 'watermark']
+            if any(kw in filename for kw in skip_keywords):
+                print(f"  Pomijam obraz (nazwa): {filename}")
+                continue
+            
+            # Sprawdź rozmiar obrazu
+            try:
+                with Image.open(path) as pil_img:
+                    width, height = pil_img.size
+                    
+                    # Pomiń bardzo małe obrazy (ikony, bullet points)
+                    if width < 50 or height < 50:
+                        print(f"  Pomijam obraz (za mały {width}x{height}): {filename}")
+                        continue
+                    
+                    # Śledź rozmiary do wykrycia powtarzających się logo
+                    size_key = f"{width}x{height}"
+                    seen_sizes[size_key] = seen_sizes.get(size_key, 0) + 1
+                    
+            except Exception:
+                # Jeśli nie można otworzyć obrazu, zachowaj go
+                pass
+            
+            filtered.append(img)
+        
+        # Usuń obrazy o rozmiarze powtarzającym się >3 razy (prawdopodobnie loga)
+        final_filtered = []
+        for img in filtered:
+            try:
+                with Image.open(img.get('path', '')) as pil_img:
+                    size_key = f"{pil_img.size[0]}x{pil_img.size[1]}"
+                    if seen_sizes.get(size_key, 0) > 3:
+                        print(f"  Pomijam obraz (powtarzający się): {img.get('filename')}")
+                        continue
+            except Exception:
+                pass
+            final_filtered.append(img)
+        
+        print(f"  Obrazy po filtracji: {len(final_filtered)}/{len(images)}")
+        return final_filtered
+    
+    def extract_from_file(self, file_path: str, output_dir: str) -> Dict:
+        """
+        Ekstrahuje tekst z pliku (obsługuje różne formaty).
+        
+        Args:
+            file_path: Ścieżka do pliku
+            output_dir: Katalog wyjściowy dla ekstrahowanych danych
+            
+        Returns:
+            Słownik z ekstrahowanymi danymi
+        """
+        ext = Path(file_path).suffix.lower()
+        
+        # Dla DOCX używaj natywnej metody (lepsza obsługa obrazów)
+        if ext == '.docx':
+            return self.extract_from_docx(file_path, output_dir)
+        
+        # Dla innych formatów użyj file_extractors
+        if not FILE_EXTRACTORS_AVAILABLE:
+            raise ImportError(f"Brak modułu file_extractors do obsługi plików {ext}")
+        
+        print(f"  Ekstrakcja z pliku {ext}: {Path(file_path).name}")
+        
+        extractor = FileExtractor()
+        extracted = extractor.extract(file_path, output_dir)
+        
+        # Konwertuj na format zgodny z resztą systemu
+        extracted_data = {
+            'text': [{
+                'section': 'Cały dokument',
+                'content': extracted.text,
+                'paragraph_count': extracted.text.count('\n') + 1,
+                'image_placeholders': []
+            }],
+            'images': [
+                {
+                    'filename': img['name'],
+                    'path': img['path'],
+                    'original_path': img.get('path', '')
+                }
+                for img in extracted.images
+            ],
+            'metadata': {
+                'filename': Path(file_path).name,
+                'total_images': len(extracted.images),
+                'total_sections': 1,
+                'total_paragraphs': extracted.text.count('\n') + 1,
+                'source_type': extracted.source_type,
+                'page_count': extracted.page_count
+            }
+        }
+        
+        # Dla Excel dodaj informacje o tabelach
+        if extracted.tables:
+            extracted_data['metadata']['tables'] = len(extracted.tables)
+        
+        print(f"  Wyekstrahowano {len(extracted_data['text'][0]['content'])} znaków tekstu")
+        
+        return extracted_data
     
     def extract_from_docx(self, docx_path: str, output_dir: str) -> Dict:
         """
@@ -214,8 +401,39 @@ class DocumentProcessor:
             # Jeśli nie znaleziono żadnych sekcji, użyj całego tekstu
             if not extracted_data['text']:
                 full_text = []
+                full_text_placeholders = []
+                
                 for para in doc.paragraphs:
                     text = para.text.strip()
+                    
+                    # Sprawdź czy paragraf zawiera obrazy (fallback)
+                    try:
+                        for run in para.runs:
+                            if run.element.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip'):
+                                for drawing in run.element.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip'):
+                                    rId = drawing.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                                    if rId:
+                                        try:
+                                            rel = doc.part.rels[rId]
+                                            if rel and 'image' in rel.target_ref:
+                                                image_filename = os.path.basename(rel.target_ref)
+                                                if image_filename in image_filename_map:
+                                                    placeholder = f"__IMAGE_PLACEHOLDER_{image_filename}__"
+                                                    if text:
+                                                        text = f"{text}\n{placeholder}"
+                                                    else:
+                                                        text = placeholder
+                                                    full_text_placeholders.append({
+                                                        'filename': image_filename,
+                                                        'section': 'Cały dokument',
+                                                        'position': len(full_text),
+                                                        'image_info': image_filename_map[image_filename]
+                                                    })
+                                        except KeyError:
+                                            pass
+                    except Exception:
+                        pass
+                    
                     if text:
                         full_text.append(text)
                 
@@ -224,16 +442,29 @@ class DocumentProcessor:
                         'section': 'Cały dokument',
                         'content': '\n'.join(full_text),
                         'paragraph_count': len(full_text),
-                        'image_placeholders': []
+                        'image_placeholders': full_text_placeholders
                     })
-                
-                extracted_data['metadata'] = {
-                    'filename': os.path.basename(docx_path),
-                    'total_images': len(extracted_data['images']),
+                    
+                    if full_text_placeholders:
+                        print(f"  Wstawiono {len(full_text_placeholders)} placeholderów obrazów do tekstu")
+            
+            # Policz wszystkie placeholdery obrazów
+            total_placeholders = sum(
+                len(section.get('image_placeholders', [])) 
+                for section in extracted_data['text']
+            )
+            
+            extracted_data['metadata'] = {
+                'filename': os.path.basename(docx_path),
+                'total_images': len(extracted_data['images']),
                 'total_sections': len(extracted_data['text']),
                 'total_paragraphs': paragraph_count,
-                    'extraction_time': str(Path(docx_path).stat().st_mtime)
-                }
+                'total_image_placeholders': total_placeholders,
+                'extraction_time': str(Path(docx_path).stat().st_mtime)
+            }
+            
+            if total_placeholders > 0:
+                print(f"  Wykryto {total_placeholders} obrazów powiązanych z tekstem")
         
         except Exception as e:
             raise Exception(f"Błąd podczas ekstrakcji z .docx: {str(e)}")
@@ -309,10 +540,22 @@ class DocumentProcessor:
                 if not description:
                     description = result.get('response', '').strip()
                 return description if description else None
+            elif response.status_code == 500:
+                error_text = response.text.lower()
+                # Wykryj błędy pamięci GPU
+                if 'resource' in error_text or 'memory' in error_text or 'stopped' in error_text:
+                    print(f"  ⚠️ Błąd pamięci GPU podczas analizy obrazu - pomijam obraz: {os.path.basename(image_path)}")
+                    print(f"  💡 Wskazówka: Spróbuj zmniejszyć rozmiar obrazów lub użyć mniejszego modelu")
+                    return None
+                print(f"Błąd serwera Ollama (500): {response.text[:200]}")
+                return None
             else:
                 print(f"Błąd podczas analizy obrazu przez Ollama: {response.status_code} - {response.text}")
                 return None
                 
+        except requests.exceptions.Timeout:
+            print(f"  ⚠️ Timeout podczas analizy obrazu: {os.path.basename(image_path)} - pomijam")
+            return None
         except requests.exceptions.RequestException as e:
             print(f"Błąd połączenia z Ollama: {e}")
             return None
@@ -320,14 +563,14 @@ class DocumentProcessor:
             print(f"Błąd podczas analizy obrazu {image_path}: {e}")
             return None
     
-    def analyze_multimodal(self, extracted_data: Dict, processing_dir: Path) -> Dict:
+    def analyze_multimodal(self, extracted_data: Dict, processing_dir: Path, analyze_images: bool = False) -> Dict:
         """
         Analizuje ekstrahowane dane multimodalne.
-        W rzeczywistości tutaj byłoby wywołanie modelu wizyjnego (np. przez Ollama).
         
         Args:
             extracted_data: Ekstrahowane dane
             processing_dir: Katalog przetwarzania
+            analyze_images: Czy analizować obrazy przez LLM (domyślnie False - szybsze przetwarzanie)
             
         Returns:
             Przeanalizowane dane
@@ -338,31 +581,38 @@ class DocumentProcessor:
             'combined_insights': []
         }
         
-        # NAJPIERW: Analiza obrazów przez Ollama
+        # Analiza obrazów przez Ollama (opcjonalna)
         image_descriptions = {}  # Mapa: filename -> description
         
-        for image_item in extracted_data.get('images', []):
-            image_path = image_item.get('path')
-            if image_path and os.path.exists(image_path):
-                # Analizuj obraz przez Ollama
-                description = self.analyze_image_with_ollama(image_path)
-                
-                if description:
-                    image_descriptions[image_item['filename']] = description
-                    analyzed_data['image_analysis'].append({
-                        'filename': image_item['filename'],
-                        'description': description,
-                        'ui_elements': [],  # Można rozszerzyć w przyszłości
-                        'text_from_image': description  # Używamy opisu jako tekstu z obrazu
-                    })
-                else:
-                    # Fallback jeśli analiza nie powiodła się
-                    analyzed_data['image_analysis'].append({
-                        'filename': image_item['filename'],
-                        'description': f"Obraz {image_item['filename']} (analiza nie powiodła się)",
-                        'ui_elements': [],
-                        'text_from_image': ''
-                    })
+        if analyze_images:
+            # Filtruj obrazy z nagłówka/stopki
+            images_to_analyze = self._filter_header_footer_images(extracted_data.get('images', []))
+            
+            print(f"  Analiza {len(images_to_analyze)} obrazów przez LLM...")
+            for idx, image_item in enumerate(images_to_analyze, 1):
+                image_path = image_item.get('path')
+                if image_path and os.path.exists(image_path):
+                    print(f"    Analizuję obraz {idx}/{len(images_to_analyze)}: {image_item['filename']}")
+                    # Analizuj obraz przez Ollama
+                    description = self.analyze_image_with_ollama(image_path)
+                    
+                    if description:
+                        image_descriptions[image_item['filename']] = description
+                        analyzed_data['image_analysis'].append({
+                            'filename': image_item['filename'],
+                            'description': description,
+                            'ui_elements': [],
+                            'text_from_image': description
+                        })
+                    else:
+                        analyzed_data['image_analysis'].append({
+                            'filename': image_item['filename'],
+                            'description': f"Obraz {image_item['filename']} (analiza nie powiodła się)",
+                            'ui_elements': [],
+                            'text_from_image': ''
+                        })
+        else:
+            print("  Pominięto analizę obrazów (opcja wyłączona - szybsze przetwarzanie)")
         
         # TERAZ: Wstaw opisy obrazów w odpowiednie miejsca w tekście PRZED analizą
         text_items_with_images = []
@@ -810,10 +1060,34 @@ class DocumentProcessor:
                 if response.status_code == 200:
                     result = response.json()
                     return result.get('response', '').strip()
+                elif response.status_code == 500:
+                    error_text = response.text.lower()
+                    # Wykryj błędy pamięci GPU
+                    if 'resource' in error_text or 'memory' in error_text or 'stopped' in error_text:
+                        print(f"  ⚠️ Błąd pamięci GPU (próba {attempt + 1}/{max_retries})")
+                        print(f"  💡 Model mógł zostać zatrzymany z powodu braku pamięci VRAM")
+                        if attempt < max_retries - 1:
+                            print(f"  🔄 Czekam 10s przed ponowną próbą...")
+                            time.sleep(10)  # Dłuższe oczekiwanie przy błędach pamięci
+                            continue
+                    # Wykryj błędy kontekstu
+                    elif 'context' in error_text or 'token' in error_text or 'length' in error_text:
+                        print(f"  ⚠️ Błąd kontekstu/tokenów (próba {attempt + 1}/{max_retries})")
+                        # Zwróć specjalny błąd który można obsłużyć wyżej
+                        raise ContextLengthError(f"Przekroczono limit kontekstu: {response.text[:200]}")
+                    else:
+                        print(f"Błąd serwera Ollama (500, próba {attempt + 1}/{max_retries}): {response.text[:300]}")
                 else:
-                    print(f"Błąd Ollama (próba {attempt + 1}/{max_retries}): {response.status_code} - {response.text}")
-                    if attempt < max_retries - 1:
-                        time.sleep(2 ** attempt)  # Exponential backoff
+                    print(f"Błąd Ollama (próba {attempt + 1}/{max_retries}): {response.status_code} - {response.text[:300]}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+            except ContextLengthError:
+                # Przepuść błąd kontekstu do obsługi wyżej
+                raise
+            except requests.exceptions.Timeout:
+                print(f"  ⚠️ Timeout Ollama (próba {attempt + 1}/{max_retries}) - model może być przeciążony")
+                if attempt < max_retries - 1:
+                    time.sleep(5)
             except requests.exceptions.RequestException as e:
                 print(f"Błąd połączenia z Ollama (próba {attempt + 1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
@@ -982,11 +1256,42 @@ class DocumentProcessor:
             return f"sekcje: {', '.join(unique_sections[:5])}, ... (łącznie {len(unique_sections)} sekcji)"
         
         return f"sekcje: {', '.join(unique_sections)}"
+
+    def _normalize_steps(self, steps: List[Any]) -> List[Dict]:
+        """
+        Normalizuje strukturę kroków zwracaną przez modele LLM.
+        Zapewnia, że każdy krok jest słownikiem z kluczami:
+        step_number, action, expected_result.
+        """
+        normalized_steps: List[Dict] = []
+        for idx, step in enumerate(steps, 1):
+            if isinstance(step, dict):
+                normalized_step = dict(step)
+                normalized_step.setdefault('step_number', normalized_step.get('order', idx) or idx)
+                action = normalized_step.get('action') or normalized_step.get('description') or normalized_step.get('name')
+                normalized_step['action'] = action or f'Krok {idx} - brak opisu'
+                expected = normalized_step.get('expected_result') or normalized_step.get('result')
+                normalized_step['expected_result'] = expected or 'Brak oczekiwanego rezultatu - weryfikacja ręczna'
+                normalized_steps.append(normalized_step)
+            elif isinstance(step, str):
+                normalized_steps.append({
+                    'step_number': idx,
+                    'action': step.strip() or f'Krok {idx} - brak treści',
+                    'expected_result': 'Weryfikacja ręczna zgodnie z dokumentacją'
+                })
+            else:
+                # Nieobsługiwany typ kroku – zapisz jako informację tekstową
+                normalized_steps.append({
+                    'step_number': idx,
+                    'action': f'Krok {idx}: {repr(step)}',
+                    'expected_result': 'Weryfikacja ręczna'
+                })
+        return normalized_steps
     
-    def stage1_generate_test_paths(self, extracted_data: Dict, processing_dir: Path) -> List[Dict]:
+    def stage1_generate_test_paths(self, extracted_data: Dict, processing_dir: Path, results_dir: Path = None, task_id: str = None) -> List[Dict]:
         """
         ETAP 1: Generuje ścieżki testowe na podstawie dokumentacji.
-        Dla długich dokumentów (500-800 stron) dzieli na chunki i przetwarza osobno.
+        Dla długich dokumentów dzieli na chunki i przetwarza osobno.
         
         Args:
             extracted_data: Ekstrahowane dane z dokumentu
@@ -995,6 +1300,8 @@ class DocumentProcessor:
         Returns:
             Lista ścieżek testowych w formacie JSON
         """
+        import time
+        
         # Przygotuj pełną dokumentację
         full_documentation = []
         for text_item in extracted_data.get('text', []):
@@ -1013,6 +1320,12 @@ class DocumentProcessor:
         # Podziel dokumentację na chunki (limit 12k tokenów = ~48k znaków)
         doc_chunks = self._split_documentation_into_chunks(doc_text, max_tokens=12000)
         
+        # Aktualizuj statystyki przetwarzania
+        self.processing_stats['current_stage'] = 1
+        self.processing_stats['total_chunks'] = len(doc_chunks)
+        self.processing_stats['processed_chunks'] = 0
+        self.processing_stats['start_time'] = time.time()
+        
         print(f"ETAP 1: Generowanie ścieżek testowych... (Dokumentacja podzielona na {len(doc_chunks)} fragmentów)")
         
         all_paths = []
@@ -1020,21 +1333,23 @@ class DocumentProcessor:
         
         # Przetwarzaj każdy chunk osobno
         for chunk_idx, chunk in enumerate(doc_chunks, 1):
-            print(f"  Przetwarzanie fragmentu {chunk_idx}/{len(doc_chunks)}...")
+            chunk_start_time = time.time()
             
-            # Dostosuj wymaganą liczbę ścieżek do rozmiaru chunka
-            if len(doc_chunks) == 1:
-                expected_paths = "30-50"
-            else:
-                # Dla każdego chunka generuj proporcjonalnie mniej ścieżek
-                min_paths = max(10, 30 // len(doc_chunks))
-                max_paths = max(15, 50 // len(doc_chunks))
-                expected_paths = f"{min_paths}-{max_paths}"
+            # Oblicz dynamiczny ETA
+            eta = self.get_dynamic_eta()
+            eta_str = f" | ETA: {int(eta)}s" if eta else ""
+            print(f"  Przetwarzanie fragmentu {chunk_idx}/{len(doc_chunks)}...{eta_str}")
             
-            full_prompt = f"{prompt_template}\n\nDOKUMENTACJA (Fragment {chunk_idx}/{len(doc_chunks)}):\n{chunk}\n\nPAMIĘTAJ: Zwracasz TYLKO JSON (bez żadnego tekstu przed lub po). Wygeneruj {expected_paths} ścieżek testowych dla tego fragmentu dokumentacji."
+            # Elastyczna liczba ścieżek - model sam decyduje ile potrzeba
+            full_prompt = f"{prompt_template}\n\nDOKUMENTACJA (Fragment {chunk_idx}/{len(doc_chunks)}):\n{chunk}\n\nPAMIĘTAJ: Zwracasz TYLKO JSON (bez żadnego tekstu przed lub po). Wygeneruj ścieżki testowe pokrywające WSZYSTKIE funkcjonalności z tego fragmentu dokumentacji. Liczba ścieżek zależy od zawartości - może być 5 lub 50, ważne jest pełne pokrycie."
             
             # Wywołaj Ollama
             response = self._call_ollama(full_prompt)
+            
+            # Zapisz czas przetwarzania chunka
+            chunk_time = time.time() - chunk_start_time
+            self.processing_stats['chunk_times'].append(chunk_time)
+            self.processing_stats['processed_chunks'] = chunk_idx
             
             if not response or len(response.strip()) < 10:
                 print(f"  OSTRZEŻENIE: Pusty response dla fragmentu {chunk_idx}, pomijam...")
@@ -1068,15 +1383,35 @@ class DocumentProcessor:
                 
                 paths = json.loads(json_str)
                 
+                # Debug: pokaż co zwrócił model
+                if paths and len(paths) > 0:
+                    print(f"  DEBUG: Typ pierwszego elementu: {type(paths[0])}, wartość: {str(paths[0])[:200]}")
+                
                 # Upewnij się, że paths jest listą słowników
                 if not isinstance(paths, list):
                     paths = [paths] if isinstance(paths, dict) else []
+                
+                # Jeśli model zwrócił listę stringów, spróbuj je przekonwertować na słowniki
+                if paths and isinstance(paths[0], str):
+                    print(f"  INFO: Model zwrócił listę stringów, konwertuję na słowniki...")
+                    converted_paths = []
+                    for idx, path_str in enumerate(paths):
+                        converted_paths.append({
+                            'title': path_str,
+                            'description': path_str,
+                            'type': 'happy_path',
+                            'source_sections': [],
+                            'border_conditions': []
+                        })
+                    paths = converted_paths
                 
                 # Sprawdź czy każdy element jest słownikiem i ma wymagane pola
                 for i, path in enumerate(paths):
                     if isinstance(path, dict):
                         # Spróbuj znaleźć tytuł w różnych polach (model może używać różnych nazw)
-                        title = path.get('title') or path.get('name') or path.get('nazwa') or path.get('description') or path.get('opis')
+                        title = (path.get('title') or path.get('name') or path.get('test_name') or 
+                                 path.get('nazwa') or path.get('description') or path.get('opis') or
+                                 path.get('scenario_name') or path.get('test_case'))
                         
                         if title:
                             # Ustaw tytuł jeśli go nie było
@@ -1116,18 +1451,27 @@ class DocumentProcessor:
         if len(all_paths) == 0:
             raise Exception("Nie udało się wygenerować żadnych ścieżek testowych z żadnego fragmentu")
         
-        # Zapisz wszystkie ścieżki do pliku
+        # Zapisz wszystkie ścieżki do pliku tymczasowego
         paths_file = processing_dir / "sciezki_testowe.txt"
         with open(paths_file, 'w', encoding='utf-8') as f:
             json.dump(all_paths, f, ensure_ascii=False, indent=2)
         
+        # Zapisz również do results_dir jako artefakt do pobrania
+        if results_dir and task_id:
+            results_dir.mkdir(parents=True, exist_ok=True)
+            artifact_file = results_dir / f"etap1_sciezki_testowe_{task_id}.json"
+            with open(artifact_file, 'w', encoding='utf-8') as f:
+                json.dump(all_paths, f, ensure_ascii=False, indent=2)
+            print(f"  Artefakt Etapu 1 zapisany: {artifact_file.name}")
+        
         print(f"ETAP 1: ŁĄCZNIE wygenerowano {len(all_paths)} ścieżek testowych z {len(doc_chunks)} fragmentów")
         return all_paths
     
-    def stage2_generate_scenarios(self, extracted_data: Dict, test_paths: List[Dict], processing_dir: Path) -> List[Dict]:
+    def stage2_generate_scenarios(self, extracted_data: Dict, test_paths: List[Dict], processing_dir: Path, results_dir: Path = None, task_id: str = None) -> List[Dict]:
         """
         ETAP 2: Generuje scenariusze testowe z walidacjami.
-        Dla długich dokumentów (500-800 stron) dzieli na chunki.
+        Dla długich dokumentów dzieli na chunki.
+        
         Args:
             extracted_data: Ekstrahowane dane z dokumentu
             test_paths: Lista ścieżek testowych z etapu 1
@@ -1136,6 +1480,8 @@ class DocumentProcessor:
         Returns:
             Lista scenariuszy testowych
         """
+        import time
+        
         # Przygotuj pełną dokumentację
         full_documentation = []
         for text_item in extracted_data.get('text', []):
@@ -1154,28 +1500,39 @@ class DocumentProcessor:
         # Podziel dokumentację na chunki (limit 12k tokenów)
         doc_chunks = self._split_documentation_into_chunks(doc_text, max_tokens=12000)
         
+        # Aktualizuj statystyki przetwarzania
+        self.processing_stats['current_stage'] = 2
+        self.processing_stats['total_chunks'] = len(doc_chunks)
+        self.processing_stats['processed_chunks'] = 0
+        
         print(f"ETAP 2: Generowanie scenariuszy testowych... (Dokumentacja podzielona na {len(doc_chunks)} fragmentów)")
         
         all_scenarios = []
         scenario_id_counter = 1
         
+        # Przygotuj skróconą listę ścieżek (tylko tytuły i ID) aby zmniejszyć prompt
+        paths_summary = [{"id": p.get("id", ""), "title": p.get("title", ""), "type": p.get("type", "")} for p in test_paths]
+        paths_json = json.dumps(paths_summary, ensure_ascii=False, indent=2)
+        
         # Przetwarzaj każdy chunk osobno
         for chunk_idx, chunk in enumerate(doc_chunks, 1):
-            print(f"  Przetwarzanie fragmentu {chunk_idx}/{len(doc_chunks)}...")
+            chunk_start_time = time.time()
             
-            # Dostosuj wymaganą liczbę scenariuszy
-            if len(doc_chunks) == 1:
-                expected_scenarios = "50-70"
-            else:
-                min_scen = max(15, 50 // len(doc_chunks))
-                max_scen = max(20, 70 // len(doc_chunks))
-                expected_scenarios = f"{min_scen}-{max_scen}"
+            # Oblicz dynamiczny ETA
+            eta = self.get_dynamic_eta()
+            eta_str = f" | ETA: {int(eta)}s" if eta else ""
+            print(f"  Przetwarzanie fragmentu {chunk_idx}/{len(doc_chunks)}...{eta_str}")
             
-            paths_json = json.dumps(test_paths, ensure_ascii=False, indent=2)
-            full_prompt = f"{prompt_template}\n\nDOKUMENTACJA (Fragment {chunk_idx}/{len(doc_chunks)}):\n{chunk}\n\nŚCIEŻKI TESTOWE:\n{paths_json}\n\nPAMIĘTAJ: Zwracasz TYLKO JSON (bez żadnego tekstu przed lub po). Wygeneruj {expected_scenarios} scenariuszy testowych dla tego fragmentu dokumentacji."
+            # Elastyczna liczba scenariuszy - model sam decyduje
+            full_prompt = f"{prompt_template}\n\nDOKUMENTACJA (Fragment {chunk_idx}/{len(doc_chunks)}):\n{chunk}\n\nŚCIEŻKI TESTOWE (skrót):\n{paths_json}\n\nPAMIĘTAJ: Zwracasz TYLKO JSON (bez żadnego tekstu przed lub po). Wygeneruj scenariusze testowe pokrywające funkcjonalności z tego fragmentu. Dla każdej funkcjonalności uwzględnij: happy path, przypadki negatywne (błędne dane), walidacje pól wymaganych. Liczba scenariuszy zależy od zawartości dokumentacji."
             
             # Wywołaj Ollama
             response = self._call_ollama(full_prompt)
+            
+            # Zapisz czas przetwarzania chunka
+            chunk_time = time.time() - chunk_start_time
+            self.processing_stats['chunk_times'].append(chunk_time)
+            self.processing_stats['processed_chunks'] = chunk_idx
             
             if not response or len(response.strip()) < 10:
                 print(f"  OSTRZEŻENIE: Pusty response dla fragmentu {chunk_idx}, pomijam...")
@@ -1214,9 +1571,15 @@ class DocumentProcessor:
                 # Sprawdź czy każdy element jest słownikiem i ma wymagane pola
                 for i, scenario in enumerate(scenarios):
                     if isinstance(scenario, dict):
-                        # Sprawdź wymagane pola
-                        if 'scenario_id' in scenario and 'title' in scenario:
-                            # Upewnij się, że ma unikalne ID
+                        # Spróbuj znaleźć tytuł w różnych polach (model może używać różnych nazw)
+                        title = scenario.get('title') or scenario.get('name') or scenario.get('nazwa') or scenario.get('scenario_name') or scenario.get('description') or scenario.get('opis')
+                        
+                        if title:
+                            # Ustaw tytuł jeśli go nie było
+                            if 'title' not in scenario:
+                                scenario['title'] = title
+                            
+                            # Upewnij się, że ma unikalne ID (nadpisujemy zawsze)
                             scenario['scenario_id'] = f"SCEN_{scenario_id_counter:03d}"
                             scenario_id_counter += 1
                             
@@ -1232,7 +1595,7 @@ class DocumentProcessor:
                                 scenario['type'] = 'positive'
                             all_scenarios.append(scenario)
                         else:
-                            print(f"  Ostrzeżenie: Scenariusz {i} w fragmencie {chunk_idx} nie ma wymaganych pól, pomijam")
+                            print(f"  Ostrzeżenie: Scenariusz {i} w fragmencie {chunk_idx} nie ma tytułu (title/name/scenario_name/description), pomijam: {list(scenario.keys())}")
                     else:
                         print(f"  Ostrzeżenie: Scenariusz {i} w fragmencie {chunk_idx} nie jest słownikiem, pomijam")
                 
@@ -1248,19 +1611,156 @@ class DocumentProcessor:
             raise Exception("Nie udało się wygenerować żadnych scenariuszy testowych z żadnego fragmentu")
         
         if len(all_scenarios) < 30:
-            print(f"  UWAGA: Wygenerowano tylko {len(all_scenarios)} scenariuszy, oczekiwano 50-70")
+            print(f"  UWAGA: Wygenerowano tylko {len(all_scenarios)} scenariuszy")
         
-        # Zapisz scenariusze do pliku
+        # Zapisz scenariusze do pliku tymczasowego
         scenarios_file = processing_dir / "scenariusze_testowe.txt"
         with open(scenarios_file, 'w', encoding='utf-8') as f:
             json.dump(all_scenarios, f, ensure_ascii=False, indent=2)
         
+        # Zapisz również do results_dir jako artefakt do pobrania
+        if results_dir and task_id:
+            results_dir.mkdir(parents=True, exist_ok=True)
+            artifact_file = results_dir / f"etap2_scenariusze_{task_id}.json"
+            with open(artifact_file, 'w', encoding='utf-8') as f:
+                json.dump(all_scenarios, f, ensure_ascii=False, indent=2)
+            print(f"  Artefakt Etapu 2 zapisany: {artifact_file.name}")
+        
         print(f"ETAP 2: ŁĄCZNIE wygenerowano {len(all_scenarios)} scenariuszy testowych z {len(doc_chunks)} fragmentów")
         return all_scenarios
     
+    def _process_batch_with_fallback(self, batch: List[Dict], prompt_template: str, full_doc: str, 
+                                       batch_idx: int, total_batches: int, current_batch_size: int = None) -> List[Dict]:
+        """
+        Przetwarza batch scenariuszy z fallbackiem na mniejsze batche przy błędach kontekstu.
+        
+        Args:
+            batch: Lista scenariuszy do przetworzenia
+            prompt_template: Szablon promptu
+            full_doc: Skrócona dokumentacja
+            batch_idx: Indeks batcha
+            total_batches: Całkowita liczba batchy
+            current_batch_size: Aktualny rozmiar batcha (do fallbacku)
+            
+        Returns:
+            Lista przetworzonych scenariuszy lub pusta lista przy błędzie
+        """
+        if current_batch_size is None:
+            current_batch_size = len(batch)
+        
+        # Skróć dokumentację jeśli batch jest duży
+        doc_limit = 32000 if current_batch_size <= 3 else 24000 if current_batch_size <= 5 else 16000
+        truncated_doc = full_doc[:doc_limit] if len(full_doc) > doc_limit else full_doc
+        if len(full_doc) > doc_limit:
+            truncated_doc += "\n\n[...dokumentacja skrócona ze względu na limit kontekstu...]"
+        
+        batch_scenarios_json = json.dumps(batch, ensure_ascii=False, indent=2)
+        
+        full_prompt = f"""{prompt_template}
+
+DOKUMENTACJA:
+{truncated_doc}
+
+SCENARIUSZE DO PRZETWORZENIA (batch {batch_idx}/{total_batches}):
+{batch_scenarios_json}
+
+PAMIĘTAJ: Zwracasz TYLKO tablicę JSON z {len(batch)} scenariuszami (bez żadnego tekstu przed lub po). 
+Każdy scenariusz MUSI zawierać: scenario_id, test_case_id, scenario_name, steps (lista kroków).
+Każdy krok MUSI mieć: step_number, action, expected_result.
+Liczba kroków dostosowana do złożoności scenariusza (minimum 3)."""
+        
+        try:
+            response = self._call_ollama(full_prompt)
+            
+            if not response or len(response.strip()) < 10:
+                raise Exception("Ollama zwróciła pustą odpowiedź")
+            
+            # Parsuj tablicę JSON
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+            else:
+                json_start = response.find('[')
+                if json_start != -1:
+                    bracket_count = 0
+                    json_end = json_start
+                    for i in range(json_start, len(response)):
+                        if response[i] == '[':
+                            bracket_count += 1
+                        elif response[i] == ']':
+                            bracket_count -= 1
+                            if bracket_count == 0:
+                                json_end = i + 1
+                                break
+                    json_str = response[json_start:json_end]
+                else:
+                    json_str = response
+            
+            batch_results = json.loads(json_str)
+            
+            if not isinstance(batch_results, list):
+                batch_results = [batch_results] if isinstance(batch_results, dict) else []
+            
+            return batch_results
+            
+        except ContextLengthError as e:
+            # Błąd kontekstu - podziel batch na mniejsze
+            print(f"    ⚠️ Błąd kontekstu dla batcha {len(batch)} scenariuszy - dzielę na mniejsze...")
+            
+            if len(batch) == 1:
+                # Nie można już podzielić - spróbuj z minimalną dokumentacją
+                print(f"    ⚠️ Próbuję z minimalną dokumentacją dla pojedynczego scenariusza...")
+                minimal_doc = full_doc[:8000] + "\n\n[...dokumentacja mocno skrócona...]"
+                try:
+                    return self._process_batch_with_fallback(
+                        batch, prompt_template, minimal_doc, batch_idx, total_batches, 1
+                    )
+                except Exception:
+                    print(f"    ❌ Nie udało się przetworzyć scenariusza - oznaczam jako błąd")
+                    return []
+            
+            # Podziel batch na dwie połowy
+            mid = len(batch) // 2
+            first_half = batch[:mid]
+            second_half = batch[mid:]
+            
+            results = []
+            if first_half:
+                results.extend(self._process_batch_with_fallback(
+                    first_half, prompt_template, full_doc, batch_idx, total_batches, len(first_half)
+                ))
+            if second_half:
+                results.extend(self._process_batch_with_fallback(
+                    second_half, prompt_template, full_doc, batch_idx, total_batches, len(second_half)
+                ))
+            
+            return results
+            
+        except Exception as e:
+            print(f"    ❌ Błąd przetwarzania batcha: {e}")
+            
+            # Przy innych błędach też spróbuj podzielić batch
+            if len(batch) > 1:
+                print(f"    🔄 Próbuję podzielić batch {len(batch)} scenariuszy...")
+                mid = len(batch) // 2
+                results = []
+                try:
+                    results.extend(self._process_batch_with_fallback(
+                        batch[:mid], prompt_template, full_doc, batch_idx, total_batches, mid
+                    ))
+                    results.extend(self._process_batch_with_fallback(
+                        batch[mid:], prompt_template, full_doc, batch_idx, total_batches, len(batch) - mid
+                    ))
+                    return results
+                except Exception:
+                    pass
+            
+            return []
+    
     def stage3_generate_detailed_steps(self, extracted_data: Dict, scenarios: List[Dict], processing_dir: Path, results_dir: Path, task_id: str) -> Path:
         """
-        ETAP 3: Generuje szczegółowe kroki testowe z fragmentacją dokumentów.
+        ETAP 3: Generuje szczegółowe kroki testowe z BATCH PROCESSING.
+        Przetwarza kilka scenariuszy naraz zamiast osobno.
         
         Args:
             extracted_data: Ekstrahowane dane z dokumentu
@@ -1272,6 +1772,8 @@ class DocumentProcessor:
         Returns:
             Ścieżka do pliku Excel z wynikami
         """
+        import time
+        
         # Przygotuj mapę sekcji
         sections = self._extract_sections_from_content(extracted_data)
         
@@ -1281,122 +1783,105 @@ class DocumentProcessor:
         # Przygotuj listę wszystkich szczegółowych scenariuszy
         all_detailed_scenarios = []
         
-        print(f"ETAP 3: Generowanie szczegółowych kroków dla {len(scenarios)} scenariuszy...")
+        # BATCH PROCESSING: Przetwarzaj scenariusze w grupach po 5
+        BATCH_SIZE = 5
+        batches = [scenarios[i:i + BATCH_SIZE] for i in range(0, len(scenarios), BATCH_SIZE)]
         
-        # Przetwarzaj każdy scenariusz osobno z odpowiednimi fragmentami dokumentacji
-        for idx, scenario in enumerate(scenarios, 1):
-            scenario_id = scenario.get('scenario_id', f'SCEN_{idx:03d}')
-            # Obsługa zarówno source_sections jak i source_pages (dla kompatybilności)
-            source_sections = scenario.get('source_sections', [])
-            if not source_sections and 'source_pages' in scenario:
-                # Konwersja starych danych - jeśli mamy numery stron, użyj wszystkich sekcji
-                source_sections = list(sections.keys())
+        # Aktualizuj statystyki przetwarzania
+        self.processing_stats['current_stage'] = 3
+        self.processing_stats['total_chunks'] = len(batches)
+        self.processing_stats['processed_chunks'] = 0
+        
+        print(f"ETAP 3: Generowanie szczegółowych kroków dla {len(scenarios)} scenariuszy w {len(batches)} batchach...")
+        
+        # Przygotuj skróconą dokumentację (dla wszystkich scenariuszy)
+        full_doc = '\n\n'.join([f"## {item.get('section', '')}\n{item.get('content', '')}" 
+                               for item in extracted_data.get('text', [])])
+        # Ogranicz rozmiar dokumentacji do ~8k tokenów
+        max_doc_chars = 32000
+        if len(full_doc) > max_doc_chars:
+            full_doc = full_doc[:max_doc_chars] + "\n\n[...dokumentacja skrócona...]"
+        
+        # Przetwarzaj każdy batch z obsługą błędów kontekstu
+        for batch_idx, batch in enumerate(batches, 1):
+            batch_start_time = time.time()
             
-            print(f"  Przetwarzanie scenariusza {idx}/{len(scenarios)}: {scenario.get('title', scenario_id)}")
+            # Oblicz dynamiczny ETA
+            eta = self.get_dynamic_eta()
+            eta_str = f" | ETA: {int(eta)}s" if eta else ""
+            print(f"  Przetwarzanie batcha {batch_idx}/{len(batches)} ({len(batch)} scenariuszy)...{eta_str}")
             
-            # Wyciągnij tylko istotne fragmenty dokumentacji
-            if source_sections:
-                doc_fragment = self._get_document_fragments(sections, source_sections)
+            # Przetwórz batch z fallbackiem na mniejsze batche
+            batch_results = self._process_batch_with_fallback(
+                batch, prompt_template, full_doc, batch_idx, len(batches)
+            )
+            
+            # Zapisz czas przetwarzania batcha
+            batch_time = time.time() - batch_start_time
+            self.processing_stats['chunk_times'].append(batch_time)
+            self.processing_stats['processed_chunks'] = batch_idx
+            
+            if batch_results:
+                print(f"    Otrzymano {len(batch_results)} scenariuszy z batcha")
+                
+                # Przetwórz każdy scenariusz z batcha
+                for scen_idx, detailed_scenario in enumerate(batch_results):
+                    if not isinstance(detailed_scenario, dict):
+                        continue
+                    
+                    # Pobierz oryginalny scenariusz z batcha
+                    orig_scenario = batch[scen_idx] if scen_idx < len(batch) else {}
+                    source_sections = orig_scenario.get('source_sections', [])
+                    
+                    # Upewnij się, że source_sections są zapisane
+                    if 'source_sections' not in detailed_scenario:
+                        detailed_scenario['source_sections'] = source_sections
+                    
+                    # Upewnij się, że są kroki
+                    steps = detailed_scenario.get('steps', [])
+                    if not isinstance(steps, list):
+                        steps = []
+                    steps = self._normalize_steps(steps)
+                    detailed_scenario['steps'] = steps
+                    
+                    # Sprawdź czy jest co najmniej 3 kroki
+                    if len(detailed_scenario['steps']) < 3:
+                        while len(detailed_scenario['steps']) < 3:
+                            step_num = len(detailed_scenario['steps']) + 1
+                            detailed_scenario['steps'].append({
+                                'step_number': step_num,
+                                'action': f'Krok {step_num} - wymagana ręczna weryfikacja',
+                                'expected_result': 'Wymagana ręczna weryfikacja zgodnie z dokumentacją'
+                            })
+                        detailed_scenario['steps'] = self._normalize_steps(detailed_scenario['steps'])
+                    
+                    # Upewnij się, że test_case_id istnieje
+                    if 'test_case_id' not in detailed_scenario:
+                        detailed_scenario['test_case_id'] = f'TC_{len(all_detailed_scenarios) + 1:04d}'
+                    
+                    # Upewnij się, że scenario_name istnieje
+                    if 'scenario_name' not in detailed_scenario:
+                        detailed_scenario['scenario_name'] = orig_scenario.get('title', orig_scenario.get('scenario_name', f'Scenariusz'))
+                    
+                    all_detailed_scenarios.append(detailed_scenario)
             else:
-                # Jeśli nie ma określonych sekcji, użyj całej dokumentacji (dla małych dokumentów)
-                doc_fragment = '\n\n'.join([f"## {item.get('section', '')}\n{item.get('content', '')}" 
-                                           for item in extracted_data.get('text', [])])
-            
-            # Przygotuj prompt dla tego scenariusza
-            scenario_json = json.dumps(scenario, ensure_ascii=False, indent=2)
-            full_prompt = f"{prompt_template}\n\nFRAGMENT DOKUMENTACJI:\n{doc_fragment}\n\nSCENARIUSZ:\n{scenario_json}\n\nPAMIĘTAJ: Zwracasz TYLKO JSON (bez żadnego tekstu przed lub po). KAŻDY scenariusz MUSI mieć co najmniej 3 kroki. Dla scenariuszy negatywnych każda walidacja = osobny krok."
-            
-            # Wywołaj Ollama
-            try:
-                response = self._call_ollama(full_prompt)
-                
-                if not response or len(response.strip()) < 10:
-                    raise Exception("Ollama zwróciła pustą odpowiedź")
-                
-                # Parsuj JSON - wyciągnij pierwszy kompletny obiekt JSON
-                # Ollama może zwracać dodatkowy tekst przed/po JSON
-                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(0)
-                    # Spróbuj sparsować - jeśli nie działa, użyj bardziej agresywnego regex
-                    try:
-                        detailed_scenario = json.loads(json_str)
-                    except json.JSONDecodeError:
-                        # Spróbuj znaleźć JSON zaczynający się od {
-                        json_start = response.find('{')
-                        if json_start != -1:
-                            # Znajdź zbalansowane nawiasy klamrowe
-                            brace_count = 0
-                            json_end = json_start
-                            for i in range(json_start, len(response)):
-                                if response[i] == '{':
-                                    brace_count += 1
-                                elif response[i] == '}':
-                                    brace_count -= 1
-                                    if brace_count == 0:
-                                        json_end = i + 1
-                                        break
-                            json_str = response[json_start:json_end]
-                            detailed_scenario = json.loads(json_str)
-                        else:
-                            raise
-                else:
-                    json_str = response
-                    detailed_scenario = json.loads(json_str)
-                
-                # Upewnij się, że detailed_scenario jest słownikiem
-                if not isinstance(detailed_scenario, dict):
-                    raise Exception(f"Odpowiedź nie jest słownikiem: {type(detailed_scenario)}")
-                
-                # Upewnij się, że source_sections są zapisane
-                if 'source_sections' not in detailed_scenario:
-                    detailed_scenario['source_sections'] = source_sections
-                
-                # Upewnij się, że są kroki
-                if 'steps' not in detailed_scenario:
-                    detailed_scenario['steps'] = []
-                elif not isinstance(detailed_scenario['steps'], list):
-                    detailed_scenario['steps'] = []
-                
-                # Sprawdź czy jest co najmniej 3 kroki
-                if len(detailed_scenario['steps']) < 3:
-                    print(f"    UWAGA: Scenariusz {scenario_id} ma tylko {len(detailed_scenario['steps'])} kroków, oczekiwano co najmniej 3")
-                    # Dodaj dodatkowe kroki jeśli brakuje
-                    while len(detailed_scenario['steps']) < 3:
-                        step_num = len(detailed_scenario['steps']) + 1
-                        detailed_scenario['steps'].append({
-                            'step_number': step_num,
-                            'action': f'Krok {step_num} - wymagana ręczna weryfikacja',
-                            'expected_result': 'Wymagana ręczna weryfikacja zgodnie z dokumentacją'
-                        })
-                
-                # Upewnij się, że test_case_id istnieje
-                if 'test_case_id' not in detailed_scenario:
-                    detailed_scenario['test_case_id'] = f'TC_{idx:04d}'
-                
-                # Upewnij się, że scenario_name istnieje
-                if 'scenario_name' not in detailed_scenario:
-                    detailed_scenario['scenario_name'] = scenario.get('title', scenario.get('scenario_name', f'Scenariusz {idx}'))
-                
-                all_detailed_scenarios.append(detailed_scenario)
-                
-            except Exception as e:
-                print(f"  Błąd podczas przetwarzania scenariusza {scenario_id}: {e}")
-                # Dodaj scenariusz z błędem
-                error_source_sections = scenario.get('source_sections', scenario.get('source_pages', []))
-                all_detailed_scenarios.append({
-                    'scenario_id': scenario_id,
-                    'test_case_id': f'TC_{idx:04d}',
-                    'scenario_name': scenario.get('title', 'Błąd generowania'),
-                    'source_sections': error_source_sections if isinstance(error_source_sections, list) else [],
-                    'priority': scenario.get('priority', 'Medium'),
-                    'status': 'Error',
-                    'steps': [{
-                        'step_number': 1,
-                        'action': f'Błąd podczas generowania: {str(e)}',
-                        'expected_result': 'Wymagana ręczna weryfikacja'
-                    }]
-                })
+                # Fallback: dodaj błędne scenariusze
+                print(f"  ⚠️ Batch {batch_idx} nie zwrócił wyników - dodaję scenariusze z błędem")
+                for scenario in batch:
+                    scenario_id = scenario.get('scenario_id', f'SCEN_{len(all_detailed_scenarios) + 1:03d}')
+                    all_detailed_scenarios.append({
+                        'scenario_id': scenario_id,
+                        'test_case_id': f'TC_{len(all_detailed_scenarios) + 1:04d}',
+                        'scenario_name': scenario.get('title', 'Błąd generowania'),
+                        'source_sections': scenario.get('source_sections', []),
+                        'priority': scenario.get('priority', 'Medium'),
+                        'status': 'Error',
+                        'steps': [{
+                            'step_number': 1,
+                            'action': 'Scenariusz wymaga ręcznego uzupełnienia',
+                            'expected_result': 'Wymagana ręczna weryfikacja'
+                        }]
+                    })
         
         # Weryfikacja: sprawdź czy wszystkie scenariusze zostały przetworzone
         processed_scenario_ids = {s.get('scenario_id') for s in all_detailed_scenarios}
@@ -1487,6 +1972,9 @@ class DocumentProcessor:
                 priority = scenario.get('priority', 'Medium')
                 status = scenario.get('status', 'Draft')
                 steps = scenario.get('steps', [])
+                if not isinstance(steps, list):
+                    steps = []
+                steps = self._normalize_steps(steps)
                 
                 if not steps:
                     # Jeśli brak kroków, dodaj jeden wiersz
