@@ -31,7 +31,7 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 task_queue = TaskQueue()
 user_manager = UserManager(base_dir=UPLOAD_FOLDER)
 # Użyj gemma2:2b jako model wizyjny (można zmienić na gemma3 jeśli dostępny)
-document_processor = DocumentProcessor(ollama_url="http://localhost:11434", ollama_model="gemma3:12b")
+document_processor = DocumentProcessor(ollama_url="http://localhost:11434", ollama_model="gemma3:12B")
 
 # Wątek przetwarzający zadania
 processing_thread = None

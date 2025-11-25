@@ -7,10 +7,10 @@ max_tokens=8192
 # Fragmentacja automatyczna: WŁĄCZONA
 # - Etap 1 i 2: Dokumentacja dzielona na chunki po ~12000 tokenów (~48k znaków)
 # - Etap 3: Już wykorzystuje fragmentację per scenariusz
-# - Limit kontekstu: 16k tokenów (odpowiedni dla GPU T4 + gemma3:12b)
+# - Limit kontekstu: 16k tokenów (odpowiedni dla GPU T4 + gemma3:12B)
 #
 # UWAGA: Dla modeli z MNIEJSZYM kontekstem (<16k) zmniejsz max_tokens do 4096-6144
-# num_ctx można wykorzystać po stronie konfiguracji modelu w Ollama (ollama run gemma3:12b --num_ctx 16384)
+# num_ctx można wykorzystać po stronie konfiguracji modelu w Ollama (ollama run gemma3:12B --num_ctx 16384)
 
 
 

@@ -115,30 +115,30 @@ else
     fi
 fi
 
-# 4. Sprawdź czy model gemma3:12b jest pobrany
+# 4. Sprawdź czy model gemma3:12B jest pobrany
 echo ""
 print_info "Sprawdzanie modelu AI..."
 echo ""
 
-if ollama list | grep -q "gemma3:12b"; then
-    print_success "Model gemma3:12b dostępny"
+if ollama list | grep -q "gemma3:12B"; then
+    print_success "Model gemma3:12B dostępny"
 else
-    print_warning "Model gemma3:12b nie jest pobrany!"
+    print_warning "Model gemma3:12B nie jest pobrany!"
     echo ""
-    echo "   Ten system wymaga modelu gemma3:12b (lub gemma2:2b)"
+    echo "   Ten system wymaga modelu gemma3:12B (lub gemma2:2b)"
     echo "   Rozmiar: ~7.4GB"
     echo ""
     read -p "   Czy chcesz pobrać model teraz? (t/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Tt]$ ]]; then
-        print_info "Pobieram model gemma3:12b..."
-        ollama pull gemma3:12b
+        print_info "Pobieram model gemma3:12B..."
+        ollama pull gemma3:12B
         
         if [ $? -eq 0 ]; then
-            print_success "Model gemma3:12b pobrany"
+            print_success "Model gemma3:12B pobrany"
         else
             print_error "Nie udało się pobrać modelu!"
-            echo "   Możesz spróbować ręcznie: ollama pull gemma3:12b"
+            echo "   Możesz spróbować ręcznie: ollama pull gemma3:12B"
             echo "   Lub użyć mniejszego modelu: ollama pull gemma2:2b"
             exit 1
         fi
@@ -234,7 +234,7 @@ echo -e "${BLUE}═════════════════════�
 echo ""
 print_info "Konfiguracja:"
 echo "   • Ollama URL: http://localhost:11434"
-echo "   • Model: gemma3:12b"
+echo "   • Model: gemma3:12B"
 echo "   • Limit kontekstu: 16k tokenów"
 echo "   • max_tokens: 8192"
 echo "   • Fragmentacja: WŁĄCZONA (dla dokumentów 500-800 stron)"
@@ -248,7 +248,8 @@ echo "   • Generowanie szczegółowych kroków (3-15/scenariusz)"
 echo "   • Automatyczna fragmentacja dla długich dokumentów"
 echo ""
 print_info "Interfejs web dostępny pod adresem:"
-echo "   👉 http://localhost:5000"
+echo "   👉 http://localhost:5000 (domyślny port)"
+echo "   💡 Aby zmienić port: export PORT=8080 przed uruchomieniem"
 echo ""
 
 # 8. Uruchom aplikację

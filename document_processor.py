@@ -1075,9 +1075,15 @@ class DocumentProcessor:
                 # Sprawdź czy każdy element jest słownikiem i ma wymagane pola
                 for i, path in enumerate(paths):
                     if isinstance(path, dict):
-                        # Sprawdź wymagane pola
-                        if 'id' in path and 'title' in path:
-                            # Upewnij się, że ma unikalne ID
+                        # Spróbuj znaleźć tytuł w różnych polach (model może używać różnych nazw)
+                        title = path.get('title') or path.get('name') or path.get('nazwa') or path.get('description') or path.get('opis')
+                        
+                        if title:
+                            # Ustaw tytuł jeśli go nie było
+                            if 'title' not in path:
+                                path['title'] = title
+                            
+                            # Upewnij się, że ma unikalne ID (nadpisujemy zawsze)
                             path['id'] = f"PATH_{path_id_counter:03d}"
                             path_id_counter += 1
                             
@@ -1095,7 +1101,7 @@ class DocumentProcessor:
                                 path['border_conditions'] = []
                             all_paths.append(path)
                         else:
-                            print(f"  Ostrzeżenie: Ścieżka {i} w fragmencie {chunk_idx} nie ma wymaganych pól, pomijam")
+                            print(f"  Ostrzeżenie: Ścieżka {i} w fragmencie {chunk_idx} nie ma tytułu (title/name/description), pomijam: {list(path.keys())}")
                     else:
                         print(f"  Ostrzeżenie: Ścieżka {i} w fragmencie {chunk_idx} nie jest słownikiem, pomijam")
                 

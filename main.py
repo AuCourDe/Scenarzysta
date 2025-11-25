@@ -40,7 +40,10 @@ def main():
     print("  - Przetwarzanie dokumentów tylko dla konkretnego przypadku")
     print("  - Automatyczne czyszczenie danych po zakończeniu")
     print()
-    print("Serwer uruchomiony na: http://0.0.0.0:5000")
+    # Pobierz port ze zmiennej środowiskowej lub użyj domyślnego
+    port = int(os.environ.get('PORT', 5000))
+    
+    print(f"Serwer uruchomiony na: http://0.0.0.0:{port}")
     print("Naciśnij Ctrl+C aby zatrzymać")
     print("=" * 60)
     print()
@@ -62,7 +65,7 @@ def main():
     cleanup_thread.start()
     
     # Uruchom serwer Flask
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)
 
 
 if __name__ == "__main__":
