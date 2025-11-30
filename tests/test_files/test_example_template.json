@@ -1,0 +1,32 @@
+{
+  "_instrukcja": "Przykładowy szablon testowy dla Scenarzysty v0.6.",
+  "example_documentation": "System TEST v0.6 obsługuje logowanie użytkownika, reset hasła oraz podgląd profilu. Dokumentacja ma tylko kilka zdań, aby przetwarzanie w testach było szybkie.",
+  "example_scenarios": [
+    {
+      "scenario_title": "Logowanie z poprawnymi danymi (TEST)",
+      "path_type": "positive",
+      "test_path": "Logowanie TEST v0.6",
+      "prerequisites": [
+        "użytkownik ma aktywne konto",
+        "użytkownik zna login i hasło"
+      ],
+      "steps": [
+        {
+          "step_number": 1,
+          "action": "Otwórz stronę logowania TEST.",
+          "expected_result": "Formularz logowania jest widoczny."
+        },
+        {
+          "step_number": 2,
+          "action": "Wpisz poprawny login i hasło.",
+          "expected_result": "Dane są widoczne w polach formularza."
+        },
+        {
+          "step_number": 3,
+          "action": "Kliknij przycisk 'Zaloguj'.",
+          "expected_result": "System przekierowuje na stronę główną TEST."
+        }
+      ]
+    }
+  ]
+}

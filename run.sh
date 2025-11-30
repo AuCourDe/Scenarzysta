@@ -214,7 +214,7 @@ for dir in "${REQUIRED_DIRS[@]}"; do
     fi
 done
 
-REQUIRED_FILES=("app.py" "main.py" "document_processor.py" "task_queue.py" "prompt1.txt" "prompt2.txt" "prompt3.txt" "settings.txt")
+REQUIRED_FILES=("app.py" "main.py" "document_processor_v2.py" "task_queue.py" "prompt_images.txt" "prompt_segmentation.txt" "prompt_paths.txt" "prompt_scenario.txt" "settings.txt")
 MISSING_FILES=0
 for file in "${REQUIRED_FILES[@]}"; do
     if [ ! -f "$file" ]; then

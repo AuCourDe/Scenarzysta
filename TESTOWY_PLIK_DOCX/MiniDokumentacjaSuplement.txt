@@ -1,0 +1,55 @@
+Dokumentacja Uzupełniająca: Specyfikacja Danych Wejściowych i Wymagań Kontekstowych dla Aplikacji do Generowania Scenariuszy Testowych
+
+Cel dokumentu:
+Zapewnić szczegółowe dane wejściowe, kontekst oraz reguły przetwarzania, które w połączeniu z główną dokumentacją analityczną, umożliwiają pełne zrozumienie i stworzenie aplikacji. Niniejszy dokument zawiera informacje specyficzne dla różnych typów dokumentacji i przypadków użycia, które nie zostały opisane w głównym dokumencie.
+
+Typy dokumentacji wejściowej:
+
+Dokumentacja funkcjonalna (SRS): Opis funkcji systemu, przepływy, dane wejściowe/wyjściowe.
+Dokumentacja GUI: Makietki, mockupy, opisy interfejsu.
+Specyfikacje API: Endpointy, metody, nagłówki, body.
+Dokumentacja architektoniczna: Diagramy, struktura systemu, zależności.
+Opisy przypadków użycia (Use Case): Aktorzy, akcje, warunki wstępne i końcowe.
+Struktura dokumentu wejściowego:
+
+Tytuł dokumentu.
+Wersja.
+Data wydania.
+Sekcje: opis funkcjonalności, przepływy, warunki brzegowe, wyjątki.
+Grafiki (makietki, diagramy).
+Tabele danych (np. pola formularzy, typy danych).
+Kontekst przetwarzania:
+
+Dokumentacja >100 stron: Podział na sekcje, przetwarzanie batchowe.
+Brakujące informacje: Zaznaczenie jako TBD (To Be Determined).
+Niespójności logiczne: Zgłoszenie alertu: „Warunek A kłóci się z Warunkiem B”.
+Niejasne dane wejściowe: Zastosowanie domyślnych wartości testowych (np. test@example.com).
+Format wyjściowy scenariusza testowego (wymagany przez aplikację):
+
+Nazwa scenariusza
+Krok do wykonania
+Wymagania
+Rezultat oczekiwany
+Logowanie użytkownika
+1. Wejdź na stronę logowania.
+Poprawne dane logowania.
+Użytkownik zostaje zalogowany.
+2. Wprowadź dane.
+3. Kliknij „Zaloguj”.
+Zasady przetwarzania dokumentacji:
+
+Każda funkcjonalność powinna generować co najmniej 1 scenariusz pozytywny i 1 negatywny.
+Makietki GUI: analiza wizualna – przyciski, pola, komunikaty błędów.
+Warunki brzegowe: testy graniczne (np. puste pole, max. długość).
+Wyjątki: scenariusze dla błędów systemu, braku połączenia, błędnych danych.
+Wymagania kontekstowe:
+
+Bezpieczeństwo: Brak przesyłania danych poza lokalne środowisko.
+Wydajność: Czas przetwarzania 1 strony ≤ 5 sekund.
+Interakcja: Aplikacja musi wspierać iteracyjną analizę (użytkownik może uzupełnić brakujące dane).
+Eksport: Format CSV zgodny z formatem test case management tool (np. TestRail).
+Przykład użycia obu dokumentów:
+
+Główne założenia (funkcjonalność, technologia) → z dokumentu analitycznego.
+Dane wejściowe, reguły przetwarzania, struktura → z niniejszego dokumentu.
+Uwaga: Aplikacja będzie działać poprawnie tylko wtedy, gdy oba dokumenty będą dostępne i zgodne.

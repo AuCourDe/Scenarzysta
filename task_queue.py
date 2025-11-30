@@ -45,7 +45,17 @@ class Task:
     # Dynamiczny ETA bazujący na rzeczywistym postępie
     dynamic_eta: Optional[float] = None  # Szacowany pozostały czas z document_processor
     current_stage: int = 0  # Aktualny etap (1, 2, 3)
-    total_stages: int = 3  # Całkowita liczba etapów
+    total_stages: int = 4  # Całkowita liczba etapów (v0.2: ekstrakcja, segmentacja, ścieżki, scenariusze)
+    
+    # Konfiguracja użytkownika v0.2 (opisy, przykłady)
+    user_config: Dict = field(default_factory=dict)
+    
+    # Opcje automatyzacji v0.4
+    generate_automation: bool = False  # Czy generować szablony testów automatycznych
+    automation_excel_mode: bool = False  # Czy pominąć generowanie scenariuszy i wczytać Excel
+    automation_excel_path: Optional[str] = None  # Ścieżka do pliku Excel ze scenariuszami
+    automation_config: Dict = field(default_factory=dict)  # Konfiguracja (prompt, pliki przykładowe)
+    automation_result_path: Optional[str] = None  # Ścieżka do ZIP z testami
     
     def get_estimated_time_remaining(self) -> Optional[float]:
         """
@@ -118,7 +128,11 @@ class Task:
             "correlate_documents": self.correlate_documents,
             "current_stage": self.current_stage,
             "total_stages": self.total_stages,
-            "can_restart": self.status in (TaskStatus.STOPPED, TaskStatus.FAILED, TaskStatus.CANCELLED)
+            "can_restart": self.status in (TaskStatus.STOPPED, TaskStatus.FAILED, TaskStatus.CANCELLED),
+            # v0.4 - automatyzacja
+            "generate_automation": self.generate_automation,
+            "automation_excel_mode": self.automation_excel_mode,
+            "automation_result_path": self.automation_result_path
         }
 
 
@@ -137,16 +151,24 @@ class TaskQueue:
         self._max_history = 100  # Maksymalna liczba rekordów w historii
         
     def add_task(self, user_id: str, filename: str, file_size: int, 
-                 analyze_images: bool = False, correlate_documents: bool = False) -> str:
+                 analyze_images: bool = True, correlate_documents: bool = False,
+                 user_config: Dict = None,
+                 generate_automation: bool = False, automation_excel_mode: bool = False,
+                 automation_excel_path: str = None, automation_config: Dict = None) -> str:
         """
-        Dodaje zadanie do kolejki.
+        Dodaje zadanie do kolejki (workflow v0.4).
         
         Args:
             user_id: Identyfikator użytkownika
             filename: Nazwa pliku
             file_size: Rozmiar pliku w bajtach
-            analyze_images: Czy analizować obrazy przez LLM (domyślnie False)
-            correlate_documents: Czy korelować dokumenty (funkcja eksperymentalna)
+            analyze_images: Czy analizować obrazy przez LLM (v0.2: zawsze True)
+            correlate_documents: Czy korelować dokumenty
+            user_config: Konfiguracja użytkownika (opisy, przykłady)
+            generate_automation: Czy generować szablony testów automatycznych (v0.4)
+            automation_excel_mode: Czy pominąć generowanie scenariuszy i wczytać Excel
+            automation_excel_path: Ścieżka do pliku Excel ze scenariuszami
+            automation_config: Konfiguracja automatyzacji (prompt, pliki przykładowe)
             
         Returns:
             task_id: Identyfikator utworzonego zadania
@@ -155,20 +177,35 @@ class TaskQueue:
         
         # Estymacja czasu na podstawie rozmiaru pliku i historii
         estimated_duration = self._estimate_duration(file_size)
-        # Jeśli analiza obrazów jest włączona, dodaj więcej czasu
-        if analyze_images:
-            estimated_duration *= 2  # Podwój estymację dla analizy obrazów
+        # v0.2 zawsze analizuje obrazy - podwój estymację
+        estimated_duration *= 2
         if correlate_documents:
             estimated_duration *= 1.5  # Korelacja dokumentów zajmuje więcej czasu
+        if generate_automation:
+            estimated_duration *= 1.5  # Generowanie testów automatycznych
+        
+        # Liczba etapów: 4 standardowe + 1 dla automatyzacji
+        if generate_automation and automation_excel_mode:
+            total_stages = 1
+        elif generate_automation:
+            total_stages = 5
+        else:
+            total_stages = 4
         
         task = Task(
             task_id=task_id,
             user_id=user_id,
             filename=filename,
             estimated_duration=estimated_duration,
-            analyze_images=analyze_images,
+            analyze_images=True,  # v0.2: zawsze True
             file_size=file_size,
-            correlate_documents=correlate_documents
+            correlate_documents=correlate_documents,
+            user_config=user_config or {},
+            total_stages=total_stages,
+            generate_automation=generate_automation,
+            automation_excel_mode=automation_excel_mode,
+            automation_excel_path=automation_excel_path,
+            automation_config=automation_config or {}
         )
         
         with self._lock:
@@ -212,18 +249,12 @@ class TaskQueue:
                     queue_positions[tid] = idx + 1
             
             # Oblicz całkowity szacowany czas dla wszystkich zadań w kolejce
-            total_estimated_time = sum(
-                task.estimated_duration or 0 
-                for task in pending_tasks
-            )
-            
-            # Dodaj czas dla aktualnie przetwarzanego zadania
-            if processing_tasks:
-                current_task = processing_tasks[0]
-                if current_task.started_at and current_task.estimated_duration:
-                    elapsed = (datetime.now() - current_task.started_at).total_seconds()
-                    remaining = max(0, current_task.estimated_duration - elapsed)
-                    total_estimated_time += remaining
+            total_estimated_time = 0.0
+            for task in all_tasks:
+                if task.status in (TaskStatus.PENDING, TaskStatus.PROCESSING):
+                    eta = task.get_estimated_time_remaining()
+                    if eta is not None:
+                        total_estimated_time += max(0.0, eta)
             
             # Oblicz szacowany czas oczekiwania dla konkretnego użytkownika
             user_wait_time = None
@@ -233,19 +264,12 @@ class TaskQueue:
                     task = self._tasks.get(tid)
                     if not task:
                         continue
-                    if task.task_id == self._current_task_id:
-                        # Aktualnie przetwarzane zadanie – dodaj pozostały czas
-                        if task.started_at and task.estimated_duration:
-                            elapsed = (datetime.now() - task.started_at).total_seconds()
-                            remaining = max(0, task.estimated_duration - elapsed)
-                            user_wait_time += remaining
-                        break
-                    elif task.user_id == user_id and task.status == TaskStatus.PENDING:
-                        # Zadanie użytkownika
-                        user_wait_time += task.estimated_duration or 0
-                    elif task.status == TaskStatus.PENDING:
-                        # Zadanie innego użytkownika przed zadaniem użytkownika
-                        user_wait_time += task.estimated_duration or 0
+                    if task.status not in (TaskStatus.PENDING, TaskStatus.PROCESSING):
+                        continue
+                    eta = task.get_estimated_time_remaining()
+                    if eta is None:
+                        continue
+                    user_wait_time += max(0.0, eta)
             
             result = {
                 "total_tasks": len(self._tasks),

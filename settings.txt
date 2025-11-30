@@ -1,7 +1,9 @@
 temperature=0.2
 top_p=0.9
 top_k=40
-max_tokens=8192
+max_tokens=4096
+context_length=16374
+segment_chunk_words=500
 
 # ===== KONFIGURACJA DLA DŁUGICH DOKUMENTÓW (500-800 STRON) =====
 # Fragmentacja automatyczna: WŁĄCZONA
@@ -11,10 +13,3 @@ max_tokens=8192
 #
 # UWAGA: Dla modeli z MNIEJSZYM kontekstem (<16k) zmniejsz max_tokens do 4096-6144
 # num_ctx można wykorzystać po stronie konfiguracji modelu w Ollama (ollama run gemma3:12B --num_ctx 16384)
-
-
-
-
-
-
-

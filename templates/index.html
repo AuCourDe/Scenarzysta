@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SCENARZYSTA - System Generujący Scenariusze Testowe</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=0.6.0">
 </head>
 <body>
     <div class="container">
         <header>
             <div class="header-title">
-                <h1>SCENARZYSTA</h1>
+                <h1>SCENARZYSTA v0.6</h1>
                 <p class="header-subtitle">System Generujący Scenariusze Testowe</p>
             </div>
             <div class="header-controls">
@@ -23,6 +23,12 @@
                     </label>
                     <div class="theme-message" id="theme-message"></div>
                 </div>
+                <div class="admin-controls">
+                    <button id="admin-login-btn" class="btn btn-secondary btn-small">Zaloguj</button>
+                    <span id="admin-status" class="admin-status" style="display: none;">Admin zalogowany</span>
+                    <button id="admin-settings-btn" class="btn btn-primary btn-small" style="display: none;">Ustawienia</button>
+                    <button id="admin-logout-btn" class="btn btn-secondary btn-small" style="display: none;">Wyloguj</button>
+                </div>
             </div>
         </header>
 
@@ -32,24 +38,97 @@
                 <h2>Prześlij dokument</h2>
                 <form id="upload-form">
                     <div class="file-input-wrapper">
-                        <input type="file" id="file-input" name="file" accept=".docx,.pdf,.xlsx,.xls,.txt" multiple required>
+                        <input type="file" id="file-input" name="file" accept=".docx,.pdf,.xlsx,.xls,.txt" multiple>
                         <label for="file-input" class="file-label">
                             <span class="file-label-text">Wybierz pliki (docx, pdf, xlsx, txt)</span>
                         </label>
                         <div id="selected-files" class="selected-files"></div>
                     </div>
-                    <div class="options-wrapper">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="analyze-images" name="analyze_images">
-                            <span class="checkbox-text">Analizuj obrazy przez AI</span>
-                            <span class="checkbox-hint">(dokładniejsze dla dokumentów z grafikami)</span>
-                        </label>
+                    
+                    <!-- Checkboxy w jednym rzędzie -->
+                    
+                    <div class="options-row">
                         <label class="checkbox-label">
                             <input type="checkbox" id="correlate-documents" name="correlate_documents">
-                            <span class="checkbox-text">Koreluj dokumenty (eksperymentalne 🧪)</span>
-                            <span class="checkbox-hint">(relacje między wieloma plikami)</span>
+                            <span class="checkbox-text">Koreluj dokumenty</span>
+                            <span class="checkbox-hint">(eksperymentalne)</span>
+                        </label>
+                        <label class="checkbox-label section-toggle">
+                            <input type="checkbox" id="custom-description-toggle">
+                            <span class="checkbox-text">Dodaj opis wymagań</span>
+                        </label>
+                        <label class="checkbox-label section-toggle">
+                            <input type="checkbox" id="custom-example-toggle">
+                            <span class="checkbox-text">Dodaj przykład</span>
+                        </label>
+                        <label class="checkbox-label section-toggle">
+                            <input type="checkbox" id="automation-toggle">
+                            <span class="checkbox-text">Szablon testów automatycznych</span>
                         </label>
                     </div>
+                    
+
+                    <!-- Rozwijana sekcja: Opis wymagań -->
+                    <div class="collapsible-content" id="custom-description-section" style="display: none;">
+                        <div class="form-group">
+                            <label for="custom-paths-desc">Wymagania wobec ścieżek testowych:</label>
+                            <textarea id="custom-paths-desc" name="custom_paths_description" 
+                                placeholder="Np. Skup się na ścieżkach związanych z bezpieczeństwem..." 
+                                rows="2"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="custom-scenarios-desc">Wymagania wobec scenariuszy:</label>
+                            <textarea id="custom-scenarios-desc" name="custom_scenarios_description" 
+                                placeholder="Np. Każdy scenariusz powinien zawierać minimum 10 kroków..." 
+                                rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Rozwijana sekcja: Przykład scenariusza -->
+                    <div class="collapsible-content" id="custom-example-section" style="display: none;">
+                        <p class="hint">Wgraj przykład dokumentacji i scenariuszy, aby AI dopasował styl pisania.</p>
+                        <div class="form-row">
+                            <a href="/download-template" class="btn btn-secondary btn-small">Pobierz szablon</a>
+                            <input type="file" id="example-file" name="example_file" accept=".json,.txt">
+                        </div>
+                    </div>
+
+                    <!-- Rozwijana sekcja: Szablon testów automatycznych -->
+                    <div class="collapsible-content" id="automation-section" style="display: none;">
+                        <p class="hint">Generuj szablony testów automatycznych (Java + Selenium + Selenide + TestNG + Allure)</p>
+                        
+                        <!-- Podopcja: Wczytaj gotowe scenariusze -->
+                        <div class="sub-option">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="automation-excel-toggle">
+                                <span class="checkbox-text">Wczytaj plik ze scenariuszami manualnymi</span>
+                                <span class="checkbox-hint">(pomiń generowanie scenariuszy)</span>
+                            </label>
+                            <div class="form-group" id="automation-excel-upload" style="display: none; margin-top: 10px;">
+                                <label for="automation-excel-file">Plik Excel ze scenariuszami:</label>
+                                <input type="file" id="automation-excel-file" name="automation_excel_file" accept=".xlsx,.xls">
+                                <p class="hint">Wgraj plik .xlsx z poprzednio wygenerowanymi scenariuszami manualnymi</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Własny prompt i pliki -->
+                        <div class="sub-option">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="automation-custom-toggle">
+                                <span class="checkbox-text">Użyj własnego promptu i przykładów kodu</span>
+                            </label>
+                            <div class="form-group" id="automation-custom-section" style="display: none; margin-top: 10px;">
+                                <label for="automation-custom-prompt">Własny prompt (zastąpi domyślny):</label>
+                                <textarea id="automation-custom-prompt" name="automation_custom_prompt" 
+                                    placeholder="Np. Użyj Playwright zamiast Selenium, framework: pytest..." 
+                                    rows="3"></textarea>
+                                <label for="automation-custom-files" style="margin-top: 10px;">Pliki z przykładowym kodem:</label>
+                                <input type="file" id="automation-custom-files" name="automation_custom_files" accept=".java,.py,.ts,.js,.txt" multiple>
+                                <p class="hint">Wgraj przykładowe klasy testowe, aby AI dopasował styl kodu.</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <button type="submit" class="btn btn-primary" id="upload-btn">
                         Prześlij i przetwórz
                     </button>
@@ -103,7 +182,7 @@
             </section>
         </main>
     </div>
-
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=0.6.0"></script>
 </body>
 </html>

@@ -1,0 +1,64 @@
+{
+    "_instrukcja": "Uzupełnij ten szablon i wgraj go jako przykład. AI będzie naśladować styl Twoich scenariuszy.",
+    
+    "example_documentation": "Tu wklej fragment Twojej dokumentacji (1-2 strony tekstu). Może to być opis funkcjonalności, ekranu, procesu biznesowego itp.",
+    
+    "example_scenarios": [
+        {
+            "scenario_title": "Przykładowy tytuł scenariusza 1",
+            "path_type": "positive",
+            "test_path": "Nazwa ścieżki testowej (np. Pomyślne logowanie)",
+            "prerequisites": [
+                "użytkownik posiada aktywne konto",
+                "użytkownik zna swoje dane logowania"
+            ],
+            "steps": [
+                {
+                    "step_number": 1,
+                    "action": "Otwórz stronę logowania aplikacji",
+                    "expected_result": "Wyświetla się formularz logowania z polami Login i Hasło"
+                },
+                {
+                    "step_number": 2,
+                    "action": "Wprowadź prawidłowy login w polu 'Login'",
+                    "expected_result": "Tekst jest widoczny w polu Login"
+                },
+                {
+                    "step_number": 3,
+                    "action": "Wprowadź prawidłowe hasło w polu 'Hasło'",
+                    "expected_result": "Hasło jest maskowane (wyświetlane jako kropki)"
+                },
+                {
+                    "step_number": 4,
+                    "action": "Kliknij przycisk 'Zaloguj'",
+                    "expected_result": "System przekierowuje do strony głównej. W nagłówku widoczna nazwa użytkownika"
+                }
+            ]
+        },
+        {
+            "scenario_title": "Przykładowy tytuł scenariusza 2 (negatywny)",
+            "path_type": "negative",
+            "test_path": "Logowanie z błędnym hasłem",
+            "prerequisites": [
+                "użytkownik posiada aktywne konto"
+            ],
+            "steps": [
+                {
+                    "step_number": 1,
+                    "action": "Otwórz stronę logowania i wprowadź prawidłowy login",
+                    "expected_result": "Login został wprowadzony"
+                },
+                {
+                    "step_number": 2,
+                    "action": "Wprowadź BŁĘDNE hasło 'nieprawidlowe123'",
+                    "expected_result": "Hasło zostało wprowadzone (maskowane)"
+                },
+                {
+                    "step_number": 3,
+                    "action": "Kliknij przycisk 'Zaloguj'",
+                    "expected_result": "System wyświetla komunikat błędu: 'Nieprawidłowy login lub hasło'. Użytkownik NIE zostaje zalogowany."
+                }
+            ]
+        }
+    ]
+}

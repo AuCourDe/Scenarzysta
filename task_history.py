@@ -63,7 +63,9 @@ class TaskHistory:
     def add_entry(self, task_id: str, user_id: str, filename: str, 
                   source_path: str, artifacts: List[Dict], 
                   status: str = "completed", error_message: str = None,
-                  analyze_images: bool = False, correlate_documents: bool = False):
+                  analyze_images: bool = False, correlate_documents: bool = False,
+                  custom_description: bool = False, custom_example: bool = False,
+                  generate_automation: bool = False, automation_excel_mode: bool = False):
         """
         Dodaje wpis do historii.
         
@@ -77,6 +79,10 @@ class TaskHistory:
             error_message: Komunikat błędu (jeśli status=failed)
             analyze_images: Czy analizowano obrazy
             correlate_documents: Czy korelowano dokumenty
+            custom_description: Czy uzytkownik dodal wlasny opis
+            custom_example: Czy uzytkownik dodal przyklad
+            generate_automation: Czy generowano testy automatyczne
+            automation_excel_mode: Czy uzyto trybu Excel (gotowe scenariusze)
         """
         with self._lock:
             entry = {
@@ -89,6 +95,10 @@ class TaskHistory:
                 'error_message': error_message,
                 'analyze_images': analyze_images,
                 'correlate_documents': correlate_documents,
+                'custom_description': custom_description,
+                'custom_example': custom_example,
+                'generate_automation': generate_automation,
+                'automation_excel_mode': automation_excel_mode,
                 'created_at': datetime.now().isoformat(),
                 'completed_at': datetime.now().isoformat(),
                 'expires_at': (datetime.now() + timedelta(days=self.RETENTION_DAYS)).isoformat()

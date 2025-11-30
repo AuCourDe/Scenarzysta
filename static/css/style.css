@@ -182,6 +182,70 @@ body.dark-mode .checkbox-hint {
     color: #999;
 }
 
+/* Checkboxy w jednym rzędzie */
+.options-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin: 15px 0;
+    padding: 12px 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+body.dark-mode .options-row {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+.options-row .checkbox-label {
+    flex: 0 0 auto;
+}
+
+/* Rozwijane sekcje */
+.collapsible-content {
+    margin: 10px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+body.dark-mode .collapsible-content {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+.form-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+/* Podopcje w rozwijanej sekcji */
+.sub-option {
+    padding: 10px 12px;
+    margin: 8px 0;
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 6px;
+    border-left: 3px solid #667eea;
+}
+
+body.dark-mode .sub-option {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.sub-option .checkbox-label {
+    margin-bottom: 0;
+}
+
+.sub-option .form-group {
+    margin-top: 10px;
+    padding-left: 10px;
+}
+
 .selected-files {
     margin-top: 10px;
     display: flex;
@@ -474,15 +538,16 @@ body.dark-mode .selected-file {
     background-color: rgba(0, 0, 0, 0.3);
     border-radius: 30px;
     transition: 0.4s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: block;
 }
 
 .theme-toggle-icon {
-    font-size: 18px;
+    position: absolute;
+    left: 7px;
+    bottom: 7px;
+    font-size: 16px;
     transition: 0.4s;
-    z-index: 1;
+    z-index: 2;
 }
 
 .theme-toggle-input:checked + .theme-toggle-slider {
@@ -490,7 +555,7 @@ body.dark-mode .selected-file {
 }
 
 .theme-toggle-input:checked + .theme-toggle-slider .theme-toggle-icon {
-    transform: rotate(360deg);
+    transform: translateX(30px) rotate(360deg);
 }
 
 .theme-toggle-slider:before {
@@ -537,6 +602,20 @@ body.dark-mode .theme-message {
 
 .theme-message.show {
     opacity: 1;
+}
+
+/* Kontrolki administratora v0.6 */
+.admin-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.admin-status {
+    font-size: 12px;
+    color: #f8f9fa;
+    opacity: 0.85;
 }
 
 /* Toast notifications */
@@ -862,6 +941,80 @@ body.dark-mode .option-badge.experimental.active {
     border-color: #7b1fa2;
 }
 
+/* Style dla znaczników opcji (tagi) */
+.option-tag {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    border-radius: 12px;
+    margin-right: 5px;
+}
+
+.option-tag.experimental {
+    background: #f3e5f5;
+    color: #7b1fa2;
+    border: 1px solid #ce93d8;
+}
+
+body.dark-mode .option-tag.experimental {
+    background: #4a1259;
+    color: #ce93d8;
+    border-color: #7b1fa2;
+}
+
+.option-tag.automation {
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #64b5f6;
+}
+
+body.dark-mode .option-tag.automation {
+    background: #0d47a1;
+    color: #90caf9;
+    border-color: #1976d2;
+}
+
+.option-tag.automation-excel {
+    background: #fff3e0;
+    color: #e65100;
+    border: 1px solid #ffb74d;
+}
+
+body.dark-mode .option-tag.automation-excel {
+    background: #bf360c;
+    color: #ffcc80;
+    border-color: #e65100;
+}
+
+/* Tryb opcjonalny dla głównego inputu (tryb Excel) */
+.file-input-wrapper.optional-mode {
+    opacity: 0.6;
+    border-style: dashed;
+}
+
+.file-input-wrapper.optional-mode .file-label-text {
+    color: #666;
+}
+
+body.dark-mode .file-input-wrapper.optional-mode .file-label-text {
+    color: #999;
+}
+
+/* Sekcja pobierania wszystkiego */
+.download-all-section {
+    text-align: center;
+    padding: 15px;
+    margin-bottom: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 2px dashed #dee2e6;
+}
+
+body.dark-mode .download-all-section {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
 /* Style dla modalu artefaktów */
 .modal-overlay {
     position: fixed;
@@ -884,6 +1037,17 @@ body.dark-mode .option-badge.experimental.active {
     max-height: 80vh;
     overflow-y: auto;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.admin-settings-modal {
+    max-width: 1100px;
+    width: 90%;
+    max-height: 90vh;
+}
+
+.admin-settings-modal .modal-body {
+    max-height: calc(90vh - 140px);
+    overflow-y: auto;
 }
 
 .modal-header {
@@ -1128,6 +1292,119 @@ body.dark-mode .history-actions {
 
 body.dark-mode .no-history {
     color: #888;
+}
+
+/* Opcjonalne sekcje formularza */
+.optional-section {
+    margin-top: 15px;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+body.dark-mode .optional-section {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+.section-toggle {
+    cursor: pointer;
+    margin-bottom: 0 !important;
+}
+
+.collapsible-content {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e9ecef;
+}
+
+body.dark-mode .collapsible-content {
+    border-top-color: #444;
+}
+
+.form-group {
+    margin-bottom: 12px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    font-size: 14px;
+    color: #555;
+}
+
+body.dark-mode .form-group label {
+    color: #bbb;
+}
+
+.form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+body.dark-mode .form-group textarea {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+}
+
+.form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-group input[type="file"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px dashed #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+body.dark-mode .form-group input[type="file"] {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+}
+
+.hint {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+body.dark-mode .hint {
+    color: #999;
+}
+
+.btn-small {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    transition: background 0.2s;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
 }
 
 @media (max-width: 768px) {

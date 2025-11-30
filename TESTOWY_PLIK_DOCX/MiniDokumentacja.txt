@@ -1,0 +1,27 @@
+Dokumentacja Analityczna: Aplikacja do Generowania Scenariuszy Testowych z Dokumentacji Systemu
+
+Cel aplikacji:
+Stworzenie narzędzia umożliwiającego automatyczne generowanie scenariuszy testowych na podstawie dokumentacji systemu (PDF, Word, itp.), z wykorzystaniem modelu językowego (LLM) oraz opcjonalnie wizyjnego (VLM), w celu skrócenia czasu przygotowania testów i zwiększenia ich jakości.
+
+Zakres funkcjonalny:
+
+Wczytywanie dokumentacji: Obsługa plików tekstowych i graficznych (PDF, DOCX, obrazy).
+Analiza treści: Identyfikacja funkcjonalności, przepływów danych, warunków brzegowych i potencjalnych luk w dokumentacji.
+Generowanie scenariuszy testowych: W formacie tabelarycznym (Nazwa, Krok, Wymagania, Rezultat).
+Testowanie dokumentacji: Wykrywanie błędów logicznych, brakujących informacji.
+Eksport wyników: Eksport scenariuszy do pliku CSV/Excel.
+Technologia:
+
+Lokalna: Python, Ollama, model Qwen3:8B (VLM).
+Chmura: Azure AI Foundry (opcjonalnie).
+Wymagania użytkownika:
+
+Obsługa dokumentów do kilkuset stron.
+Wsparcie dla makiety GUI (obrazki, diagramy).
+Brak integracji z systemami logowania (np. rc clone).
+Możliwość analizy dokumentacji pod kątem kompletności.
+Założenia systemowe:
+
+Aplikacja działa lokalnie lub jako mikrousługa.
+Interfejs użytkownika: CLI lub prosty GUI (np. Streamlit).
+Dane nie są przesyłane poza lokalne środowisko (jeśli używany lokalny model).

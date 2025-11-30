@@ -16,13 +16,27 @@ Lub:
 
 import sys
 import os
+import logging
 
 # Dodaj katalog główny do ścieżki
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Wyłącz logi Flask/Werkzeug
+for logger_name in ['werkzeug', 'flask', 'flask.app']:
+    _logger = logging.getLogger(logger_name)
+    _logger.setLevel(logging.CRITICAL)
+    _logger.disabled = True
+
 from app import app, start_processing_thread, task_queue, user_manager
 import threading
 import time
+from werkzeug.serving import WSGIRequestHandler
+
+
+# Cichy handler - nie loguje requestów HTTP
+class QuietRequestHandler(WSGIRequestHandler):
+    def log_request(self, code='-', size='-'):
+        pass
 
 
 def main():
@@ -62,8 +76,8 @@ def main():
     cleanup_thread = threading.Thread(target=cleanup_old_tasks, daemon=True)
     cleanup_thread.start()
     
-    # Uruchom serwer Flask
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # Uruchom serwer Flask z cichym handlerem
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, request_handler=QuietRequestHandler)
 
 
 if __name__ == "__main__":
